@@ -113,6 +113,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Security Headers Middleware ───────────────────────────────────────────────
+from fastapi.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self';"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # ── Persistence ───────────────────────────────────────────────────────────────
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 DATA_FILE = DATA_DIR / "spider_state.json"
@@ -573,6 +590,32 @@ def log_activity(kind: str, message: str, level: str = "info"):
 # ── Auth ──────────────────────────────────────────────────────────────────────
 SESSION_COOKIE = "spider_session"
 SESSION_TTL = 60 * 60 * 24 * 7
+
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+_LOGIN_ATTEMPTS: dict = {}  # ip → [(timestamp, success)]
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_WINDOW = 60 * 5  # 5 minutes
+_LOCKOUT_DURATION = 60 * 10  # 10 minute lockout
+
+def _check_login_rate_limit(ip: str) -> tuple[bool, str]:
+    """Check if IP is rate-limited for login attempts. Returns (allowed, reason)."""
+    now = time.time()
+    attempts = _LOGIN_ATTEMPTS.get(ip, [])
+    # Clean old attempts
+    clean = [a for a in attempts if now - a[0] < _LOGIN_WINDOW]
+    _LOGIN_ATTEMPTS[ip] = clean
+    if len(clean) >= _MAX_LOGIN_ATTEMPTS:
+        last_fail = max((a[0] for a in clean if not a[1]), default=0)
+        if now - last_fail < _LOCKOUT_DURATION:
+            return False, f"Too many login attempts. Try again in {_LOCKOUT_DURATION - int(now - last_fail)}s"
+    return True, ""
+
+def _record_login_attempt(ip: str, success: bool):
+    """Record a login attempt for rate limiting."""
+    now = time.time()
+    attempts = _LOGIN_ATTEMPTS.get(ip, [])
+    attempts.append((now, success))
+    _LOGIN_ATTEMPTS[ip] = attempts[-20:]  # Keep only last 20
 
 def hash_password(pw: str) -> str:
     return hashlib.sha256(f"{pw}{CONFIG['secret']}".encode()).hexdigest()
@@ -2358,6 +2401,44 @@ async def sub_ping_handler(identifier: str):
     raise HTTPException(status_code=404, detail="User not found")
 
 
+async def _resolve_subscription_user(identifier: str, request: Request):
+    entry = SUB_HASH_INDEX.get(identifier)
+    if entry is not None:
+        if entry.get("kind") == "user":
+            uid = str(entry.get("id"))
+            async with USERS_LOCK:
+                user = USERS.get(uid)
+                if user is not None:
+                    return uid, dict(user)
+        raise HTTPException(status_code=404, detail="User not found")
+    if _is_valid_uuid(identifier):
+        raise HTTPException(status_code=404, detail="User not found")
+    await require_auth(request)
+    async with USERS_LOCK:
+        for uid, user in USERS.items():
+            if user.get("username") == identifier:
+                return uid, dict(user)
+    raise HTTPException(status_code=404, detail="User not found")
+
+
+def _subscription_wants_html(request: Request) -> bool:
+    qualities = {}
+    for item in request.headers.get("accept", "").lower().split(","):
+        media_type, *params = item.strip().split(";")
+        quality = 1.0
+        for param in params:
+            key, _, value = param.strip().partition("=")
+            if key == "q":
+                try:
+                    quality = float(value)
+                except ValueError:
+                    quality = 0.0
+        qualities[media_type] = quality if 0 <= quality <= 1 else 0.0
+    html_quality = qualities.get("text/html", 0.0)
+    plain_quality = qualities.get("text/plain", qualities.get("text/*", qualities.get("*/*", 0.0)))
+    return html_quality > 0 and html_quality >= plain_quality
+
+
 # ── Subscription (single link / user sub page) ──────────────────────────────
 @app.get("/sub/{identifier}")
 async def subscription_handler(identifier: str, request: Request):
@@ -2392,6 +2473,8 @@ async def subscription_handler(identifier: str, request: Request):
         if _kind == "user":
             async with USERS_LOCK:
                 _u = USERS.get(_ident)
+            if _u and _subscription_wants_html(request):
+                return FileResponse(_os.path.join(_STATIC_DIR, "sub.html"))
             if _u:
                 # SECURITY: never expose the raw config UUID on public routes.
                 # Serve the secure-hash subscription directly.
@@ -2653,9 +2736,16 @@ async def sub_group_subscription(uuid_key: str, request: Request):
 async def api_login(request: Request):
     body = await request.json()
     ip = client_ip(request)
+    # Rate limit check
+    allowed, reason = _check_login_rate_limit(ip)
+    if not allowed:
+        log_activity("auth", f"ورود مسدود (rate limit) از {ip}: {reason}", "err")
+        raise HTTPException(status_code=429, detail=reason)
     if hash_password(str(body.get("password", ""))) != AUTH["password_hash"]:
+        _record_login_attempt(ip, False)
         log_activity("auth", f"تلاش ورود ناموفق از {ip}", "err")
         raise HTTPException(status_code=401, detail="رمز عبور اشتباه است")
+    _record_login_attempt(ip, True)
     token = await create_session()
     log_activity("auth", f"ورود موفق به پنل از {ip}", "ok")
     resp = JSONResponse({"ok": True})
