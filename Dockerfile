@@ -21,7 +21,7 @@ COPY requirements.txt ./
 RUN pip install -r requirements.txt
 
 COPY . .
-RUN python -m py_compile main.py telegram_proxy.py relay_vless.py shared.py pages.py
+RUN python -m py_compile main.py telegram_proxy.py relay_vless.py shared.py pages.py brand.py telegram_bot.py
 
 EXPOSE 8080
 EXPOSE 443
