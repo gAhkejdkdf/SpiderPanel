@@ -121,6 +121,49 @@ async def answer_cb(cb_id: str, text: str = "", alert: bool = False):
                      text=text, show_alert=alert)
 
 
+async def _sub_qr_photo(uid: str, u: dict) -> bytes | None:
+    """Render the subscription QR PNG for a panel user (None if unavailable)."""
+    M = _M()
+    if not getattr(M, "QR_AVAILABLE", False):
+        return None
+    try:
+        import io as _io
+        import qrcode
+        host = M.SETTINGS.get("domain") or M.get_host()
+        sub_url = M.build_sub_url(host, "user", uid, u)
+        qr = qrcode.QRCode(version=1, box_size=8, border=3,
+                           error_correction=qrcode.constants.ERROR_CORRECT_M)
+        qr.add_data(sub_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning("sub QR render failed: %s", e)
+        return None
+
+
+async def send_photo(chat_id, png: bytes, caption: str = "") -> dict:
+    """Upload a PNG (multipart) to Telegram as a photo message."""
+    tok = str(state().get("bot_token") or "").strip()
+    if not tok or not png:
+        return {"ok": False, "description": "no_token_or_image"}
+    try:
+        files = {"photo": ("sub.png", png, "image/png")}
+        data = {"chat_id": str(chat_id)}
+        if caption:
+            data["caption"] = caption
+            data["parse_mode"] = "HTML"
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(TG_API.format(token=tok, method="sendPhoto"),
+                                  data=data, files=files)
+            return r.json()
+    except Exception as e:
+        logger.warning("tg sendPhoto failed: %s", e)
+        return {"ok": False, "description": str(e)}
+
+
 def _btn(text, data):
     return {"text": text, "callback_data": data}
 
@@ -244,7 +287,7 @@ async def _cmd_help(chat_id, tg_id):
                _main_menu())
 
 
-async def _cmd_my(chat_id, tg_id):
+async def _cmd_my(chat_id, tg_id, with_qr: bool = False):
     M = _M()
     tg = state()
     rec = tg.get("tg_users", {}).get(str(tg_id))
@@ -259,6 +302,13 @@ async def _cmd_my(chat_id, tg_id):
         await send(chat_id, "حساب شما یافت نشد. با پشتیبانی تماس بگیرید.", _main_menu())
         return
     sub = _user_sub_url(uid, u)
+    if with_qr:
+        # Send the QR of the sub link as a photo so users can scan it directly.
+        photo = await _sub_qr_photo(uid, u)
+        if photo:
+            await send_photo(chat_id, photo,
+                             caption=f"🔗 لینک اشتراک:\n{sub}")
+            return
     used = M.fmt_bytes(u.get("traffic_used_bytes", 0))
     limit = "∞" if not u.get("traffic_limit_bytes") else M.fmt_bytes(u["traffic_limit_bytes"])
     await send(chat_id,
@@ -267,7 +317,8 @@ async def _cmd_my(chat_id, tg_id):
                f"مصرف: {used} از {limit}\n"
                f"انقضا: {_esc(u.get('expire_at') or '—')}\n\n"
                f"🔗 لینک اشتراک:\n<code>{_esc(sub)}</code>",
-               _rows([_btn("🔄 بروزرسانی", "menu:my"), _btn("🛒 تمدید/خرید", "menu:buy")]))
+               _rows([_btn("📷 QR ساب", "menu:qr"), _btn("🔄 بروزرسانی", "menu:my"),
+                      _btn("🛒 تمدید/خرید", "menu:buy")]))
 
 
 async def _cmd_buy(chat_id):
@@ -304,10 +355,21 @@ async def _cmd_trial(chat_id, tg_id):
     tgs[str(tg_id)] = {**(rec or {}), "panel_user_id": res.get("user_id"),
                        "username": name, "trial_used": True}
     asyncio.create_task(M.save_state())
+    # Re-read the freshly created user so the sub URL/QR match the new account
+    # (create_panel_user may return a user without a stable sub_hash yet).
+    uid = res.get("user_id")
+    async with M.USERS_LOCK:
+        u = M.USERS.get(uid)
+        u = dict(u) if u else None
+    sub = _user_sub_url(uid, u) if u else str(res.get("subscription_url") or "")
     await send(chat_id,
                f"🎁 <b>اشتراک تست شما فعال شد!</b>\n\n"
-               f"🔗 لینک اشتراک:\n<code>{_esc(res.get('subscription_url'))}</code>",
+               f"🔗 لینک اشتراک:\n<code>{_esc(sub)}</code>",
                _main_menu())
+    if u:
+        photo = await _sub_qr_photo(uid, u)
+        if photo:
+            await send_photo(chat_id, photo, caption=f"🔗 لینک اشتراک:\n{sub}")
 
 
 # ── Callback handlers ────────────────────────────────────────────────────────
@@ -400,7 +462,6 @@ async def _cb_admin_orders(chat_id, cb_id):
 async def _approve_order(order_id, admin_id):
     M = _M()
     tg = state()
-    order = next((o for o in tg.get("orders", []) if o["id"] == order_id), None)
     if not order:
         return False, "سفارش یافت نشد"
     if order.get("status") == "approved":
@@ -427,10 +488,20 @@ async def _approve_order(order_id, admin_id):
     order["approved_at"] = M.datetime.now().isoformat()
     tg.get("pending", {}).pop(str(uid), None)
     asyncio.create_task(M.save_state())
+    # Fresh sub URL from the (possibly just-created/extended) user record.
+    _uid = str(rec.get("panel_user_id") or "")
+    _u = M.USERS.get(_uid) or {}
+    if _u:
+        sub = _user_sub_url(_uid, _u)
+        photo = await _sub_qr_photo(_uid, _u)
+    else:
+        photo = None
     await send(uid,
                f"✅ <b>پرداخت شما تأیید شد!</b>\n\n"
                f"پکیج: {_esc(pkg.get('title'))}\n"
                f"🔗 لینک اشتراک:\n<code>{_esc(sub)}</code>")
+    if photo:
+        await send_photo(uid, photo, caption=f"🔗 لینک اشتراک:\n{sub}")
     return True, "تأیید شد"
 
 
@@ -570,6 +641,9 @@ async def _handle_callback(chat_id, tg_id, data, cb_id):
     elif data == "menu:support":
         await answer_cb(cb_id)
         await send(chat_id, f"☎️ پشتیبانی: {_esc(_M().brand('support_url'))}")
+    elif data == "menu:qr":
+        await answer_cb(cb_id)
+        await _cmd_my(chat_id, tg_id, with_qr=True)
     elif data.startswith("buy:"):
         await _cb_buy(chat_id, tg_id, data.split(":", 1)[1], cb_id)
     elif data == "admin:stats" and is_admin(tg_id):
@@ -636,6 +710,9 @@ async def _poll_loop():
                 params["offset"] = _LAST_UPDATE_ID + 1
             res = await api("getUpdates", **params)
             if not res.get("ok"):
+                # 409 means a webhook is set: drop it and fall back to polling.
+                if res.get("description") and "webhook" in str(res["description"]).lower():
+                    await api("deleteWebhook", drop_pending_updates=False)
                 await asyncio.sleep(8)
                 continue
             for upd in res.get("result", []):
@@ -660,13 +737,15 @@ def start_polling():
 
 
 async def _start_telegram_bot():
-    """Entry point called from main.py startup."""
+    """Entry point called from main.py startup.
+
+    Polling must ALWAYS be scheduled (even without a token) so that setting a
+    token later from the panel UI takes effect immediately. With no token the
+    loop simply idles and retries, so there is nothing to leak.
+    """
     try:
-        tg = state()
-        if str(tg.get("bot_token") or "").strip():
-            start_polling()
-        else:
-            logger.info("Telegram bot disabled (no token configured)")
+        state()  # initialise defaults
+        start_polling()
     except Exception as e:
         logger.warning("failed to start Telegram bot: %s", e)
 
@@ -715,7 +794,7 @@ def register(app):
         start_polling()
         return {"ok": True, "admin_ids": tg.get("admin_ids", [])}
 
-    @app.post("/api/telegram/bot/test")
+    @app.api_route("/api/telegram/bot/test", methods=["GET", "POST"])
     async def bot_test(_=Depends(_auth())):
         me = await api("getMe")
         return {"ok": bool(me.get("ok")), "result": me.get("result"), "error": me.get("description")}

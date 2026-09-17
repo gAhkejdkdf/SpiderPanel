@@ -12,9 +12,17 @@ from typing import Dict, Optional
 
 logger = logging.getLogger("Spider-TelegramProxy")
 SECRET_RE = re.compile(r"^[0-9a-fA-F]{32}$")
-BASE = Path(os.environ.get("SPIDER_DATA_DIR", "/data"))
+BASE = Path(os.environ.get("DATA_DIR", os.environ.get("SPIDER_DATA_DIR", "/data")))
 TG_DIR = BASE / "telegram"
-TG_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    TG_DIR.mkdir(parents=True, exist_ok=True)
+except (OSError, PermissionError) as _e:  # read-only FS (Railway Nixpacks) → fall back to /tmp
+    logger.warning("TG_DIR %s unavailable (%s); falling back to /tmp/telegram", TG_DIR, _e)
+    TG_DIR = Path("/tmp/telegram")
+    try:
+        TG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 BIN = os.environ.get("MTPROTO_PROXY_BIN", "/usr/local/bin/mtproto-proxy")
 STATS_BASE = int(os.environ.get("MTPROTO_STATS_PORT", "2398"))
 WORKERS = max(1, int(os.environ.get("MTPROTO_WORKERS", "2")))

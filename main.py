@@ -2338,6 +2338,13 @@ async def root():
 @app.get("/sub/{identifier}/ping")
 async def sub_ping_handler(identifier: str):
     """Ping endpoint for subscription page — returns a simple response."""
+    # Secure hash form → resolve the hash to its user first.
+    _entry = SUB_HASH_INDEX.get(identifier)
+    if _entry and _entry.get("kind") == "user":
+        async with USERS_LOCK:
+            _u = USERS.get(str(_entry.get("id")))
+        if _u and _u.get("username") and is_user_allowed(_u):
+            return {"ok": True, "ping": "pong", "username": _u["username"]}
     # Check user first
     async with USERS_LOCK:
         for u in USERS.values():
@@ -2386,11 +2393,64 @@ async def subscription_handler(identifier: str, request: Request):
             async with USERS_LOCK:
                 _u = USERS.get(_ident)
             if _u:
-                identifier = _u.get("config_uuid") or _ident
-            else:
-                raise HTTPException(status_code=404, detail="not found")
+                # SECURITY: never expose the raw config UUID on public routes.
+                # Serve the secure-hash subscription directly.
+                host = SETTINGS.get("domain") or get_host()
+                username = _u.get("username", _ident)
 
-    # 1) UUID format → subscription for V2Box/clients: return ALL configs for the user
+                # Build ALL configs for this user. Worker publishes its own standalone
+                # configs; use those exact configs when available.
+                configs = list(_u.get("worker_configs") or [])
+                inbound_ids = _u.get("inbound_ids") or []
+                stored_path_user = (_u.get("path") or "").strip()
+                for iid_ in inbound_ids:
+                    ib = INBOUNDS.get(iid_)
+                    try:
+                        _p = (ib.get("protocol") if ib else "").lower()
+                        _s = (ib.get("security") if ib else "").lower()
+                        if ib and (_p == "reality" or _s == "reality"):
+                            if not str(ib.get("external_domain") or "").strip() or not str(ib.get("external_port") or "").strip():
+                                continue
+                        if ib and _p == "worker":
+                            if not _u.get("worker_configs"):
+                                configs.extend(_worker_configs(_ident, _u, ib, stored_path_user, f"{brand_prefix()}-{username}"))
+                        else:
+                            cfg = generate_user_config(_ident, _u, iid_)
+                            if cfg:
+                                configs.append(cfg)
+                    except Exception:
+                        continue
+                if not configs:
+                    fallback_config = generate_user_config(_ident, _u, _u.get("inbound_id"))
+                    configs = [fallback_config] if fallback_config else []
+
+                # Custom scanned-IP configs
+                custom_cfgs = generate_custom_ip_configs(_ident, _u)
+                for cfg in custom_cfgs.get("railway", []) + custom_cfgs.get("cf", []):
+                    configs.append(cfg)
+
+                # Sni Spoof configs
+                if _u.get("sni_spoof_v2box"):
+                    configs.extend(generate_sni_spoof_configs(_ident, _u))
+
+                if not configs:
+                    raise HTTPException(status_code=404, detail="no configs found")
+
+                # Status config as first entry
+                status_config = generate_status_config(_u, configs)
+                all_configs = [status_config] + configs if status_config else configs
+
+                content = base64.b64encode("\n".join(all_configs).encode()).decode()
+                _web_url = build_sub_url(host, "user", _ident, _u)
+                return Response(content=content, media_type="text/plain",
+                                headers={"profile-title": quote(username),
+                                          "profile-update-interval": "12",
+                                          "profile-web-page-url": _web_url,
+                                          "support-url": brand("support_url")})
+            raise HTTPException(status_code=404, detail="not found")
+
+    # 1) UUID format → legacy alias. SECURITY: a raw config UUID must never
+    # serve configs publicly; bounce clients to the owner's secure hash URL.
     if _is_valid_uuid(identifier):
         async with USERS_LOCK:
             target_user = None
@@ -2401,72 +2461,17 @@ async def subscription_handler(identifier: str, request: Request):
                     target_uid = uid
                     break
         if target_user:
-            if _user_uses_worker_inbound(target_user):
-                target_user = await _worker_pull_user(target_uid, target_user)
-                USERS[target_uid] = target_user
             host = SETTINGS.get("domain") or get_host()
-            username = target_user.get("username", target_uid)
+            secure_url = build_sub_url(host, "user", target_uid, target_user)
+            return RedirectResponse(url=secure_url, status_code=302)
 
-            # Build ALL configs for this user. Worker publishes its own standalone
-            # configs; use those exact configs when available.
-            configs = list(target_user.get("worker_configs") or [])
-            inbound_ids = target_user.get("inbound_ids") or []
-            stored_path_user = (target_user.get("path") or "").strip()
-            for iid_ in inbound_ids:
-                ib = INBOUNDS.get(iid_)
-                try:
-                    _p = (ib.get("protocol") if ib else "").lower()
-                    _s = (ib.get("security") if ib else "").lower()
-                    if ib and (_p == "reality" or _s == "reality"):
-                        if not str(ib.get("external_domain") or "").strip() or not str(ib.get("external_port") or "").strip():
-                            continue
-                    if ib and _p == "worker":
-                        if not target_user.get("worker_configs"):
-                            configs.extend(_worker_configs(target_uid, target_user, ib, stored_path_user, f"PANAHANNET-{username}"))
-                    else:
-                        cfg = generate_user_config(target_uid, target_user, iid_)
-                        if cfg:
-                            configs.append(cfg)
-                except Exception:
-                    continue
-            if not configs:
-                fallback_config = generate_user_config(target_uid, target_user, target_user.get("inbound_id"))
-                configs = [fallback_config] if fallback_config else []
-
-            # Custom scanned-IP configs
-            custom_cfgs = generate_custom_ip_configs(target_uid, target_user)
-            for cfg in custom_cfgs.get("railway", []) + custom_cfgs.get("cf", []):
-                configs.append(cfg)
-
-            # Sni Spoof configs
-            if target_user.get("sni_spoof_v2box"):
-                configs.extend(generate_sni_spoof_configs(target_uid, target_user))
-
-            if not configs:
-                raise HTTPException(status_code=404, detail="no configs found")
-
-            # Status config as first entry
-            status_config = generate_status_config(target_user, configs)
-            all_configs = [status_config] + configs if status_config else configs
-
-            content = base64.b64encode("\n".join(all_configs).encode()).decode()
-            _web_url = build_sub_url(host, "user", target_uid, target_user)
-            return Response(content=content, media_type="text/plain",
-                            headers={"profile-title": quote(username),
-                                      "profile-update-interval": "12",
-                                      "profile-web-page-url": _web_url,
-                                      "support-url": brand("support_url")})
-
-        # Fallback: check LINKS (legacy link UUID)
+        # Fallback: check LINKS (legacy link UUID) → redirect to its secure hash too.
         async with LINKS_LOCK:
             link = LINKS.get(identifier)
         if link and is_link_allowed(link):
             host = SETTINGS.get("domain") or get_host()
-            proto = link.get("protocol", DEFAULT_PROTOCOL)
-            vless = generate_vless_link(identifier, host, remark=f"PANAHANNET-{link['label']}", protocol=proto)
-            content = base64.b64encode(vless.encode()).decode()
-            return Response(content=content, media_type="text/plain",
-                            headers={"profile-title": quote(link["label"]), "support-url": "https://t.me/PenhanNetvpnbot"})
+            secure_url = build_sub_url(host, "link", identifier, link)
+            return RedirectResponse(url=secure_url, status_code=302)
 
         raise HTTPException(status_code=404, detail="not found")
 
@@ -4001,7 +4006,7 @@ async def get_user_config(user_id: str, _=Depends(require_auth)):
 
 @app.get("/api/users/{user_id}/qr")
 async def get_user_qr(user_id: str, _=Depends(require_auth)):
-    """Return a QR code PNG for the user's subscription URL (domain/sub/uuid)."""
+    """Return a QR code PNG for the user's subscription URL (secure /sub/<hash>)."""
     if not QR_AVAILABLE:
         raise HTTPException(status_code=501, detail="QR code generation not available (install qrcode and Pillow)")
 
@@ -4009,11 +4014,8 @@ async def get_user_qr(user_id: str, _=Depends(require_auth)):
         u = USERS.get(user_id)
         if not u:
             raise HTTPException(status_code=404, detail="user not found")
-        config_uuid = u.get("config_uuid", "")
         username = u.get("username", user_id)
-
-    if not config_uuid:
-        raise HTTPException(status_code=404, detail="user has no config_uuid")
+        u = dict(u)
 
     host = SETTINGS.get("domain") or get_host()
     sub_url_val = build_sub_url(host, "user", user_id, u)
@@ -4051,7 +4053,7 @@ async def get_user_subscription(user_id: str, _=Depends(require_auth)):
         "username": username,
         "subscription_uuid": sub_uuid,
         "sub_hash": _sub_hash,
-        "subscription_url": f"https://{host}{BRAND.get('sub_prefix', '/sub')}/{_sub_hash}",
+        "subscription_url": build_sub_url(host, "user", user_id, u),
         "encoded_config": content,
     }
 
@@ -4340,7 +4342,7 @@ async def api_user_sub(username: str):
 async def sub_qr(username: str, cfg: str = ""):
     """Public QR code PNG for the subscription page (no auth required).
 
-    Without ?cfg= the QR contains the subscription URL (domain/sub/config_uuid).
+    Without ?cfg= the QR contains the secure subscription URL (domain/sub/<hash>).
     With ?cfg={config_uuid} it encodes that specific config link of the user —
     used by the sub page when no client-side QR library is available.
     """
