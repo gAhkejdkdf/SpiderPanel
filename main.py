@@ -1,3 +1,5 @@
+from __future__ import annotations  # lazy annotations: safe on Python 3.8–3.13
+
 import asyncio
 import json
 import os
@@ -55,7 +57,7 @@ def brand_prefix() -> str:
     return brand("name_prefix", "PANAHANNET") or "PANAHANNET"
 
 
-async def _serve_branded_html(filename: str) -> HTMLResponse:
+async def _serve_branded_html(filename: str) -> "HTMLResponse":
     """Serve a static HTML file with panel path + brand injected as globals."""
     fp = _os.path.join(_STATIC_DIR, filename)
     try:

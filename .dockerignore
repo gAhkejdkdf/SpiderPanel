@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.log
+*.pid
+xray/
+user.js
+main.py.bak
+.agents
+.gitignore
+.dockerignore

@@ -1,8 +1,11 @@
 [build]
-builder = "dockerfile"
+builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python -m uvicorn main:app --host 0.0.0.0 --port 8080"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
+# The image CMD already binds to ${PORT:-8080}; no startCommand override so the
+# value Railway injects is honored (a hardcoded port breaks the deploy).
+healthcheckPath = "/"
+healthcheckTimeout = 120
