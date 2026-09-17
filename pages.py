@@ -156,6 +156,7 @@ input:focus ~ .input-icon{color:var(--pn-blue)}
       <span class="hint-value" onclick="document.getElementById('pw').value='123456';document.getElementById('pw').focus()">123456</span>
     </div>
     <form id="form">
+      <input type="hidden" id="csrf-hidden" name="csrf_token" value="">
       <div class="field-group">
         <div class="field-label"><i class="ti ti-lock"></i> رمز عبور</div>
         <div class="input-wrap">
@@ -196,7 +197,7 @@ input:focus ~ .input-icon{color:var(--pn-blue)}
     var btn=document.getElementById('btn'),err=document.getElementById('err'),et=document.getElementById('err-text');
     err.classList.remove('show');btn.disabled=true;btn.classList.add('btn-loading');
     try{
-      var r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw.value})});
+      var r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw.value,csrf_token:document.getElementById('csrf-hidden').value})});
       if(!r.ok){var d=await r.json().catch(function(){return{}});throw new Error(d.detail||'خطا در ورود');}
       location.href='/dashboard';
     }catch(ex){

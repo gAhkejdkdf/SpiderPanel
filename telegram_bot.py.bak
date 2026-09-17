@@ -1,17 +1,10 @@
-# telegram_bot.py - PANAHANNET Telegram bot v6 (XAFAN EDITION)
-# Inspired by user.js bot patterns:
-#   - InlineKeyboardMarkup buttons INSIDE messages (like user.js)
-#   - Rich traffic usage bar in /my and /status
-#   - Better emoji/icons and visual hierarchy
-#   - Transaction history formatting in /balance
-#   - Structured admin stats and order notifications
-#   - Support contact as inline button throughout
-#   - send_or_edit for in-place message updates (like user.js tgSendOrEdit)
-#   - Rich welcome message with feature bullets
-#   - FA/EN language support
-#   - Button styles (success/danger/primary)
-#   - Enhanced buy/trial confirmation with connection details
-#   - Admin notification polish
+# telegram_bot.py - PANAHANNET Telegram bot v4 (FULLY FIXED)
+# Key fixes:
+#   - ALL menus use ReplyKeyboardMarkup (buttons BELOW input bar)
+#   - After every send(), previous bot message is auto-deleted
+#   - Anti-spam cooldown on all user actions (1s)
+#   - Receipt photo+caption parsed robustly
+#   - /debug command for admins
 
 import asyncio, html, logging, re, time, io
 from typing import Optional
@@ -22,7 +15,6 @@ TG_API = 'https://api.telegram.org/bot{token}/{method}'
 _POLL_TASK: Optional[asyncio.Task] = None
 _LAST_UPDATE_ID = 0
 _CHAT_LAST_MSG: dict = {}
-_CHAT_LAST_MSG_HASH: dict = {}  # like user.js tgLastBotHash — avoids duplicate sends
 _ACTION_COOLDOWN: dict = {}
 _COOLDOWN_SEC = 1.0
 
@@ -99,39 +91,8 @@ async def send(chat_id, text, keyboard=None, delete_prev=False):
     params = {'chat_id': int(chat_id), 'text': text, 'parse_mode': 'HTML', 'disable_web_page_preview': True}
     if keyboard: params['reply_markup'] = keyboard
     result = await api('sendMessage', **params)
-    if result.get('ok'):
-        _CHAT_LAST_MSG[int(chat_id)] = result['result']['message_id']
-        _hash = text + '|' + (str(keyboard) if keyboard else '')
-        _CHAT_LAST_MSG_HASH[int(chat_id)] = _hash
+    if result.get('ok'): _CHAT_LAST_MSG[int(chat_id)] = result['result']['message_id']
     return result
-
-async def send_or_edit(chat_id, text, keyboard=None):
-    """Edit existing message in place, or send new if none exists — like user.js tgSendOrEdit."""
-    cid = int(chat_id)
-    mid = _CHAT_LAST_MSG.get(cid)
-    if mid:
-        old_hash = _CHAT_LAST_MSG_HASH.get(cid, '')
-        new_hash = text + '|' + (str(keyboard) if keyboard else '')
-        if old_hash == new_hash:
-            return True  # identical content, skip
-        try:
-            params = {'chat_id': cid, 'message_id': mid, 'text': text, 'parse_mode': 'HTML', 'disable_web_page_preview': True}
-            if keyboard: params['reply_markup'] = keyboard
-            r = await api('editMessageText', **params)
-            if r.get('ok'):
-                _CHAT_LAST_MSG[cid] = r['result'].get('message_id', mid)
-                _CHAT_LAST_MSG_HASH[cid] = new_hash
-                return True
-        except: pass
-        # Fallback: delete and send fresh
-        await delete_last_msg(cid)
-    params = {'chat_id': cid, 'text': text, 'parse_mode': 'HTML', 'disable_web_page_preview': True}
-    if keyboard: params['reply_markup'] = keyboard
-    r = await api('sendMessage', **params)
-    if r.get('ok'):
-        _CHAT_LAST_MSG[cid] = r['result']['message_id']
-        _CHAT_LAST_MSG_HASH[cid] = text + '|' + (str(keyboard) if keyboard else '')
-    return r
 
 async def send_photo(chat_id, photo_bytes, caption=''):
     tok = str(state().get('bot_token') or '').strip()
@@ -152,113 +113,31 @@ async def send_photo(chat_id, photo_bytes, caption=''):
 async def answer_cb(cb_id, text='', alert=False):
     return await api('answerCallbackQuery', callback_query_id=cb_id, text=text, show_alert=alert)
 
-# Keyboard builders — both ReplyKeyboard (below bar) and InlineKeyboard (inside msg)
+# Reply keyboard builders (buttons BELOW input bar)
 def _rk(rows_list):
     return {'keyboard': rows_list, 'resize_keyboard': True, 'one_time_keyboard': False}
 
-def _ik(rows_list):
-    """Inline keyboard — buttons appear inside the message (user.js style)."""
-    return {'inline_keyboard': rows_list}
-
-def _btn(text, data=None, url=None, style=None):
-    """Build a single inline button with optional style hint."""
-    b = {'text': text}
-    if url: b['url'] = url
-    elif data is not None: b['callback_data'] = data
-    return b
-
-def _main_menu(): return _rk([['خرید سابسکریپشن', 'حساب من'], ['تست رایگان', 'پشتیبانی']])
-def _main_menu_with_ref(): return _rk([['خرید سابسکریپشن', 'حساب من'], ['دعوت', 'موجودی'], ['تست رایگان', 'پشتیبانی']])
-def _admin_menu(): return _rk([['آمار', 'کاربران'], ['سفارشات', 'پخش'], ['فروشگاه'], ['پنل ادمین']])
-def _buy_back(): return _rk([['⬅ بازگشت']])
+def _main_menu(): return _rk([['Buy Subscription', 'My Account'], ['Free Trial', 'Support']])
+def _main_menu_with_ref(): return _rk([['Buy Subscription', 'My Account'], ['Referral', 'Balance'], ['Free Trial', 'Support']])
+def _admin_menu(): return _rk([['Stats', 'Users'], ['Orders', 'Broadcast'], ['Shop Menu'], ['Panel Admin']])
+def _buy_back(): return _rk([['Back']])
 
 def _pkg_rows(pkgs):
-    return _rk([[f"{p['title']} - {p['price']:,} Toman"] for p in pkgs] + [['⬅ بازگشت']])
+    return _rk([[f"{p['title']} - {p['price']:,} Toman"] for p in pkgs] + [['Back']])
 
-def _my_submenu(): return _rk([['📷 کد QR', '🔄 بروزرسانی'], ['💳 تمدید/خرید', '⬅ بازگشت']])
-def _ref_submenu(): return _rk([['📋 کپی کد', 'حساب من'], ['⬅ بازگشت']])
-def _balance_submenu(): return _rk([['📋 تاریخچه', 'حساب من'], ['⬅ بازگشت']])
-def _status_submenu(): return _rk([['🔄 بروزرسانی', 'حساب من'], ['⬅ بازگشت']])
-def _sub_submenu(): return _rk([['🔗 باز کردن لینک', 'حساب من'], ['⬅ بازگشت']])
-
-# ── Inline keyboard builders (action buttons inside message) ──────────────────
-def _renew_ik(sub_url):
-    """Inline keyboard با دکمه‌های تمدید / باز کردن لینک / بازگشت."""
-    return _ik([
-        [{'text': '🔗 Open Subscription', 'url': sub_url},
-         {'text': '💳 Renew / Buy',        'callback_data': 'u:renew'}],
-        [{'text': '🏠 حساب من',        'callback_data': 'u:my'},
-         {'text': '📞 پشتیبانی',           'callback_data': 'u:support'}]
-    ])
-
-def _support_ik():
-    return _ik([
-        [{'text': '📞 تماس با پشتیبانی', 'url': 'https://t.me/support'}],
-        [{'text': '⬅ بازگشت', 'callback_data': 'u:back'}]
-    ])
-
-def _qr_back_ik():
-    return _ik([
-        [{'text': '🔄 بروزرسانی', 'callback_data': 'u:refresh'},
-         {'text': '🏠 حساب من', 'callback_data': 'u:my'}]
-    ])
-
-def _cashback_ik(price):
-    return _ik([
-        [{'text': f'💰 پرداخت {price:,} Toman', 'callback_data': f'u:pay:{price}'},
-         {'text': '⬅ بازگشت', 'callback_data': 'u:back'}]
-    ])
-
-def _home_inline():
-    """Main menu as inline keyboard (user.js style) — buttons INSIDE the message."""
-    return _ik([
-        [{'text': '🛒 خرید سابسکریپشن', 'callback_data': 'u:buy'},
-         {'text': '👤 حساب من',       'callback_data': 'u:my'}],
-        [{'text': '🎁 تست رایگان',       'callback_data': 'u:trial'},
-         {'text': '💰 کیف پول',           'callback_data': 'u:wallet'}],
-        [{'text': '🔗 دعوت‌نامه',         'callback_data': 'u:ref'},
-         {'text': '📞 پشتیبانی',          'callback_data': 'u:support'}],
-    ])
-
-def _home_inline_ref():
-    """Main menu inline with referral prominently placed."""
-    return _ik([
-        [{'text': '🛒 خرید',          'callback_data': 'u:buy'},
-         {'text': '👤 سرویس‌های من',      'callback_data': 'u:services'}],
-        [{'text': '🎁 تست رایگان',       'callback_data': 'u:trial'},
-         {'text': '💰 کیف پول',           'callback_data': 'u:wallet'}],
-        [{'text': '🔑 کد دعوت',    'callback_data': 'u:ref'},
-         {'text': '📊 آمار',            'callback_data': 'u:stats'}],
-        [{'text': '📞 پشتیبانی',          'url': 'https://t.me/support'}],
-    ])
+def _my_submenu(): return _rk([['QR Code', 'Refresh'], ['Renew/Buy', 'Back']])
+def _ref_submenu(): return _rk([['Copy Code', 'My Account'], ['Back']])
+def _balance_submenu(): return _rk([['History', 'My Account'], ['Back']])
+def _status_submenu(): return _rk([['Refresh', 'My Account'], ['Back']])
+def _sub_submenu(): return _rk([['Open Link', 'My Account'], ['Back']])
 
 async def _copy_ref_code(chat_id, tg_id, code):
     """Send referral code as plain text so user can copy it."""
-    await send(chat_id,
-               f'<b>🔗 کد دعوت شما</b>\n\n'
-               f'<code>{code}</code>\n\n'
-               f'این کد را برای دوستان خود بفرستید. هر دعوت <b>۱ امتیاز</b> به شما می‌دهد!',
-               _ref_submenu(), delete_prev=True)
+    await send(chat_id, f'Your referral code:\n<code>{code}</code>\n\nSend this to friends via DM.', _ref_submenu(), delete_prev=True)
 
 def _order_action_menu(order_id):
     short = order_id[:10] if len(order_id) > 10 else order_id
-    return _rk([[f'✅ تأیید ({short})'], [f'❌ رد ({short})']])
-
-def _traffic_bar(used_bytes, limit_bytes):
-    """نوار پیشرفت بصری مثل: ████░░░░░░ 40%"""
-    if not limit_bytes or limit_bytes <= 0:
-        return '∞ نامحدود'
-    pct = min(100, int(used_bytes * 100 / limit_bytes))
-    filled = pct // 10
-    empty = 10 - filled
-    if pct >= 90:
-        color = '🔴'
-    elif pct >= 70:
-        color = '🟡'
-    else:
-        color = '🟢'
-    bar = '█' * filled + '░' * empty
-    return f'{color} {bar} {pct}%'
+    return _rk([[f'Approve ({short})'], [f'Reject ({short})']])
 
 async def _sub_qr_photo(uid, u):
     M = _M()
@@ -397,6 +276,7 @@ async def _apply_referral(tg_id, inviter_code):
     my_rec = tgu.get(str(tg_id), {})
     if my_rec.get('referredBy'):
         return False, 'already_ref'
+    inviter_rec['referredBy'] = inviter_rec.get('referredBy')  # stays same
     # Mark this user as referred by inviter
     my_rec['referredBy'] = str(inviter_rec.get('tg_id'))
     # Credit inviter wallet
@@ -431,74 +311,48 @@ def _credit_wallet(rec, amount, note=''):
 async def _cmd_start(chat_id, tg_id, text=''):
     M = _M()
     tg = state()
+    # Ensure linked user record with referral data
     rec = await _ensure_linked_user(tg_id)
-    if not rec.get('firstName'):
-        try:
-            first_name = (tg.get('_last_names', {}).get(str(tg_id)) or '').strip()
-            if first_name:
-                rec['firstName'] = first_name
-        except: pass
+    first_name = ''
+    try:
+        first_name = (tg.get('_last_names', {}).get(str(tg_id)) or '').strip()
+    except: pass
+    if not rec.get('firstName') and first_name:
+        rec['firstName'] = first_name
+    # Parse referral code from /start {code}
     payload = ''
-    parts = text.split() if text else []
-    if len(parts) > 1:
-        payload = parts[1].strip()
+    if text and ' ' in text:
+        payload = text.split(' ', 1)[1].strip()
     if payload:
         ok, reason = await _apply_referral(tg_id, payload)
         if ok:
             panel_name = M.brand("panel_name")
             await send(chat_id,
-                       f'🎉 <b>به {panel_name} خوش آمدید!</b>\n\n'
-                       f'دوستی شما رو دعوت کرده!\n\n'
-                       f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n'
-                       f'<b>🔑 کد دعوت شما:</b>\n'
-                       f'<code>{rec.get("referralCode")}</code>\n'
-                       f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n'
-                       f'این کد را بفرستید — هر دعوت <b>۱ امتیاز</b> دارد!',
-                       _home_inline_ref(), delete_prev=True)
+                       f'🎉 Welcome to {_esc(panel_name)}!\n\n'
+                       f'You were referred by a friend!\n\n'
+                       f'<b>Your Referral Code:</b>\n<code>{rec.get("referralCode")}</code>\n\n'
+                       f'Send this code to friends — you earn <b>1 point</b> per referral!',
+                       _main_menu_with_ref(), delete_prev=True)
             return
     name = rec.get('firstName') or 'friend'
-    panel_name = M.brand("panel_name")
     if is_admin(tg_id):
         await send(chat_id,
-                   f'👋 <b>Salam {_esc(name)}!</b> 👋\n\n'
-                   f'⚙️ <b>Admin Panel</b>: {_esc(panel_name)}\n\n'
-                   f'🆔 <b>شناسه شما:</b> <code>{tg_id}</code>\n'
-                   f'🔑 <b>Referral:</b> <code>{rec.get("referralCode", "—")}</code>',
+                   f'Hi {_esc(name)}! 👋\n'
+                   f'To admin panel {_esc(M.brand("panel_name"))}\n\n'
+                   f'<b>Your ID:</b> <code>{tg_id}</code>',
                    _admin_menu(), delete_prev=True)
         return
     shop = tg.get('shop', {})
-    welcome_custom = shop.get('welcome')
-    if welcome_custom:
-        welcome_text = welcome_custom
-    else:
-        # Rich welcome like user.js pnWelcome()
-        services_count = 10
-        welcome_text = (
-            f'🎓 <b>به ربات اختصاصی پناه‌نت خوش آمدید، {_esc(name)} عزیز!</b> 🎓\n\n'
-            f'🚀 <b>سریع‌ترین، امن‌ترین و نامحدودترین</b> فیلترشکن با اپلیکیشن اختصاصی و سرویس‌های متنوع پرسرعت!\n\n'
-            f'✅ اتصال فوری و پایدار\n'
-            f'✅ حجم نامحدود، بدون قطعی\n'
-            f'✅ سرعت بالا و پینگ پایین\n'
-            f'✅ مخصوص گیم کانتر و والورنت با پینگ پایین — بیش از {services_count} سرور\n\n'
-            f'🎁 <b>برای اطمینان از کیفیت سرویس‌های ما می‌توانید ابتدا تست رایگان را دریافت کنید</b> و بعد از استفاده، در صورت رضایت خرید کنید.'
-        )
-    kb = _home_inline_ref() if rec.get('referralCode') else _home_inline()
-    await send(chat_id, welcome_text, kb, delete_prev=True)
+    welcome = shop.get('welcome') or (
+        f'Welcome to {_esc(M.brand("panel_name"))}! 🌐\n\n'
+        f'Use the menu below to buy a subscription, check your account, or request a free trial.'
+    )
+    await send(chat_id, welcome, _main_menu_with_ref(), delete_prev=True)
 
 async def _cmd_help(chat_id, tg_id):
     await send(chat_id,
-               f'📖 <b>دستورات</b>\n\n'
-               f'🚀 <code>/start</code>   شروع یا ثبت با کد دعوت\n'
-               f'📊 <code>/my</code>      اطلاعات حساب و آمار\n'
-               f'💳 <code>/buy</code>     خرید اشتراک\n'
-               f'🔗 <code>/ref</code>     کد دعوت و درآمد\n'
-               f'💰 <code>/balance</code> موجودی کیف پول\n'
-               f'🔑 <code>/sub</code>     لینک مستقیم سابسکریپشن\n'
-               f'🎁 <code>/trial</code>   تست رایگان (۱ روز)\n'
-               f'📈 <code>/stats</code>   ادمین: آمار سرور\n'
-               f'👥 <code>/users</code>   ادمین: کاربران اخیر\n'
-               f'📦 <code>/orders</code>  ادمین: لیست سفارشات',
-               _home_inline(), delete_prev=True)
+               'Help:\n/start start  - Join with optional referral code\n/my   - My account info\n/buy  - Buy subscription\n/ref  - Your referral code & stats\n/balance - Wallet balance & transactions\n/sub  - Direct subscription link\n/trial - Free trial',
+               _main_menu(), delete_prev=True)
 
 async def _cmd_ref(chat_id, tg_id):
     M = _M()
@@ -512,26 +366,15 @@ async def _cmd_ref(chat_id, tg_id):
         me = await api('getMe')
         bot_username = me.get('result', {}).get('username', '')
     except: pass
-    if bot_username:
-        invite_link = f'https://t.me/{bot_username}?start={code}'
-        copy_kb = _ik([
-            [{'text': '📋 کپی لینک', 'callback_data': f'u:copy:{code}'},
-             {'text': '👤 حساب من',  'callback_data': 'u:my'}],
-            [{'text': '⬅ بازگشت',   'callback_data': 'u:back'}]
-        ])
-    else:
-        invite_link = f'کد: <code>{_esc(code)}</code>'
-        copy_kb = _ref_submenu()
+    invite_link = f'https://t.me/{bot_username}?start={code}' if bot_username else f'Use code: <code>{_esc(code)}</code>'
     await send(chat_id,
-               f'🔗 <b>برنامه دعوت</b>\n\n'
-               f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n'
-               f'<b>🔑 کد شما:</b>\n<code>{_esc(code)}</code>\n\n'
-               f'<b>🔗 لینک دعوت:</b>\n<code>{_esc(invite_link)}</code>\n'
-               f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n'
-               f'👥 دوستان دعوت شده: <b>{ref_count}</b>\n'
-               f'💰 امتیاز کیف پول: <b>{balance}</b>\n\n'
-               f'از هر دوستی که با کد شما بیاید <b>۱ امتیاز</b> بگیرید!',
-               copy_kb, delete_prev=True)
+               f'🔗 <b>Referral Program</b>\n\n'
+               f'Your Referral Code:\n<code>{_esc(code)}</code>\n\n'
+               f'Invite Link:\n{invite_link}\n\n'
+               f'Referred users: <b>{ref_count}</b>\n'
+               f'Wallet points: <b>{balance}</b>\n\n'
+               f'Earn 1 point for each friend who joins with your code!',
+               _ref_submenu(), delete_prev=True)
 
 async def _cmd_balance(chat_id, tg_id):
     M = _M()
@@ -539,22 +382,15 @@ async def _cmd_balance(chat_id, tg_id):
     wallet = rec.get('wallet', {'balance': 0, 'txns': []})
     balance = wallet.get('balance', 0)
     txns = wallet.get('txns', [])
-    lines = [
-        f'💰 <b>موجودی کیف پول</b>\n\n'
-        f'<b>{balance}</b> امتیاز',
-    ]
+    lines = [f'💰 <b>Wallet Balance: {balance} points</b>']
     if txns:
-        lines.append('\n<b>📋 تراکنشهای اخیر</b>')
-        for t in txns[:10]:
+        lines.append('\n<b>Recent transactions:</b>')
+        for t in txns[:8]:
             ts = t.get('ts', 0)
             dt = M.datetime.fromtimestamp(ts).strftime('%m/%d %H:%M') if ts else ''
-            atype = t.get('type', '?')
-            amt = t.get('amount', 0)
-            note = _esc(t.get('note', ''))[:30]
-            icon = '➕' if amt > 0 else '➖'
-            lines.append(f'{icon} <code>{atype}</code> &nbsp; {amt:+d} &nbsp; {note} &nbsp; <i>{dt}</i>')
+            lines.append(f'  {t.get("type","?")} | +{t.get("amount",0)} | {_esc(t.get("note",""))} | {dt}')
     else:
-        lines.append('\nهنوز تراکنشی ندارید.')
+        lines.append('\nNo transactions yet.')
     await send(chat_id, '\n'.join(lines), _balance_submenu(), delete_prev=True)
 
 async def _cmd_status(chat_id, tg_id):
@@ -562,123 +398,76 @@ async def _cmd_status(chat_id, tg_id):
     tg = state()
     rec = tg.get('tg_users', {}).get(str(tg_id))
     if not rec:
-        await send(chat_id, 'سابسکریپشن ندارید. اول ثبت‌نام کنید.', _home_inline(), delete_prev=True)
+        await send(chat_id, 'No account linked yet. Use /start.', _main_menu(), delete_prev=True)
         return
     uid = rec.get('panel_user_id')
     # Lookup panel user
     async with M.USERS_LOCK:
         u = dict(M.USERS.get(uid)) if uid and M.USERS.get(uid) else None
-    if not u:
-        await send(chat_id, 'حساب پیدا نشد.', _home_inline(), delete_prev=True)
-        return
-    used_b = u.get('traffic_used_bytes', 0)
-    limit_b = u.get('traffic_limit_bytes', 0)
-    used_str = _fmt_bytes(used_b)
-    limit_str = _fmt_bytes(limit_b) if limit_b and limit_b > 0 else '∞ نامحدود'
-    bar = _traffic_bar(used_b, limit_b)
-    expire_raw = u.get('expire_at', '')
-    expire = expire_raw or '—'
-    # Calculate days remaining
-    days_left = '—'
-    if expire_raw:
-        try:
-            exp_dt = M.datetime.fromisoformat(expire_raw)
-            delta = exp_dt - M.datetime.now()
-            days_left = f'{delta.days} day{"s" if delta.days != 1 else ""}'
-        except: pass
-    status_icon = {'active': '🟢', 'disabled': '🔴', 'limited': '🟡'}.get(u.get('status', ''), '⚪')
-    sub = _user_sub_url(uid, u)
+    used = _fmt_bytes(u.get('traffic_used_bytes', 0)) if u else '—'
+    limit = '∞' if u and not u.get('traffic_limit_bytes') else (_fmt_bytes(u['traffic_limit_bytes']) if u and u.get('traffic_limit_bytes') else '—')
+    expire = u.get('expire_at') or '—'
+    sub = _user_sub_url(uid, u) if u else '—'
     wallet = rec.get('wallet', {})
     ref_code = rec.get('referralCode', '—')
     ref_count = rec.get('refCount', 0)
-    # Build inline keyboard for actions
-    kb = _renew_ik(sub)
     await send(chat_id,
-               f'{status_icon} <b>وضعیت اتصال شما</b>\n'
-               f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n'
-               f'👤 <b>نام کاربری:</b> <code>{_esc(u.get("username"))}</code>\n'
-               f'📊 <b>وضعیت:</b> <b>{u.get("status", "?")}</b>\n\n'
-               f'📈 <b>مصرف ترافیک</b>\n'
-               f'{used_str} / {limit_str}\n'
-               f'<code>{bar}</code>\n\n'
-               f'📅 <b>انقضا:</b> <code>{_esc(expire)}</code>\n'
-               f'⏳ <b>روز باقیمانده:</b> <b>{days_left}</b>\n\n'
-               f'💰 <b>کیف پول:</b> {wallet.get("balance", 0)} امتیاز\n'
-               f'🔗 <b>دعوت:</b> {ref_code} ({ref_count} کاربر)',
-               kb, delete_prev=True)
+               f'📊 <b>Account Status</b>\n\n'
+               f'<b>Panel Account:</b>\n'
+               f'User: <code>{_esc(u.get("username") if u else "Not created")}</code>\n'
+               f'Status: {rec.get("status", "inactive") if u else "—"}\n'
+               f'Traffic: {used} / {limit}\n'
+               f'Expiry: {_esc(expire)}\n\n'
+               f'<b>Subscription:</b>\n<code>{_esc(sub)}</code>\n\n'
+               f'<b>Referral:</b> {ref_code}\n'
+               f'Referred: {ref_count} friend(s)\n'
+               f'Wallet: {wallet.get("balance", 0)} points',
+               _status_submenu(), delete_prev=True)
 
 async def _cmd_sub(chat_id, tg_id):
     M = _M()
     tg = state()
     rec = tg.get('tg_users', {}).get(str(tg_id))
     if not rec or not rec.get('panel_user_id'):
-        await send(chat_id, 'هنوز سابسکریپشنی ندارید. اول خرید کنید!', _home_inline(), delete_prev=True)
+        await send(chat_id, 'No subscription yet. Buy one first!', _main_menu(), delete_prev=True)
         return
     uid = rec['panel_user_id']
     async with M.USERS_LOCK:
         u = M.USERS.get(uid)
     if not u:
-        await send(chat_id, 'حساب پیدا نشد.', _home_inline(), delete_prev=True)
+        await send(chat_id, 'Account not found.', _main_menu(), delete_prev=True)
         return
     sub = _user_sub_url(uid, u)
-    kb = _ik([
-        [{'text': '🔗 باز کردن لینک', 'url': sub},
-         {'text': '👤 حساب من',        'callback_data': 'u:my'}],
-        [{'text': '⬅ بازگشت',        'callback_data': 'u:back'}]
-    ])
     await send(chat_id,
-               f'🔗 <b>لینک سابسکریپشن</b>\n\n'
+               f'🔗 <b>Your Subscription Link</b>\n\n'
                f'<code>{_esc(sub)}</code>\n\n'
-               f'این لینک رو در مرورگر باز کنید تا کانفیگ رو بگیرید.\n'
-               f'در برنامه VPN خود به عنوان Subscription URL اضافه کنید.',
-               kb, delete_prev=True)
+               f'Open this link in any browser to get your config.\n'
+               f'Add it to your VPN app as a subscription URL.',
+               _sub_submenu(), delete_prev=True)
 
 async def _cmd_my(chat_id, tg_id, with_qr=False):
     M = _M()
     tg = state()
     rec = tg.get('tg_users', {}).get(str(tg_id))
     if not rec or not rec.get('panel_user_id'):
-        await send(chat_id, 'هنوز سابسکریپشنی ندارید. از دکمه خرید استفاده کنید.', _home_inline(), delete_prev=True)
+        await send(chat_id, 'No subscription yet. Use the Buy button.', _main_menu(), delete_prev=True)
         return
     uid = rec['panel_user_id']
     async with M.USERS_LOCK: u = dict(M.USERS.get(uid)) if M.USERS.get(uid) else None
     if not u:
-        await send(chat_id, 'حساب پیدا نشد. با پشتیبانی تماس بگیرید.', _home_inline(), delete_prev=True)
+        await send(chat_id, 'Account not found. Contact support.', _main_menu(), delete_prev=True)
         return
     sub = _user_sub_url(uid, u)
     if with_qr:
         photo = await _sub_qr_photo(uid, u)
-        if photo:
-            await send_photo(chat_id, photo, caption=f'لینک:\n{sub}')
+        if photo: await send_photo(chat_id, photo, caption=f'Sub link:\n{sub}')
         return
-    used_b = u.get('traffic_used_bytes', 0)
-    limit_b = u.get('traffic_limit_bytes', 0)
-    used_str = _fmt_bytes(used_b)
-    limit_str = _fmt_bytes(limit_b) if limit_b and limit_b > 0 else '∞ نامحدود'
-    bar = _traffic_bar(used_b, limit_b)
-    expire_raw = u.get('expire_at', '')
-    expire = expire_raw or '—'
-    days_left = '—'
-    if expire_raw:
-        try:
-            exp_dt = M.datetime.fromisoformat(expire_raw)
-            delta = exp_dt - M.datetime.now()
-            days_left = f'{delta.days} روز'
-        except: pass
-    status_icon = {'active': '🟢', 'disabled': '🔴', 'limited': '🟡'}.get(u.get('status', ''), '⚪')
-    kb = _renew_ik(sub)
+    used = _fmt_bytes(u.get('traffic_used_bytes', 0))
+    limit = '\u221e' if not u.get('traffic_limit_bytes') else _fmt_bytes(u['traffic_limit_bytes'])
+    expire = u.get('expire_at') or '\u2014'
     await send(chat_id,
-               f'{status_icon} <b>حساب من</b>\n'
-               f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n'
-               f'👤 <b>کاربری:</b> <code>{_esc(u.get("username"))}</code>\n'
-               f'📊 <b>وضعیت:</b> <b>{u.get("status", "?")}</b>\n\n'
-               f'📈 <b>مصرف ترافیک</b>\n'
-               f'{used_str} / {limit_str}\n'
-               f'<code>{bar}</code>\n\n'
-               f'📅 <b>تاریخ انقضا:</b> <code>{_esc(expire)}</code>\n'
-               f'⏳ <b>روز باقیمانده:</b> <b>{days_left}</b>\n\n'
-               f'🔗 <b>سابسکریپشن:</b> <code>{_esc(sub)}</code>',
-               kb, delete_prev=True)
+               f'Account info:\n\nUser: <code>{_esc(u.get("username"))}</code>\nUsed: {used} of {limit}\nExpiry: {_esc(expire)}\n\nLink:\n<code>{_esc(sub)}</code>',
+               _my_submenu(), delete_prev=True)
 
 async def _cmd_buy(chat_id):
     shop = state().get('shop', {})
@@ -696,42 +485,28 @@ async def _cmd_trial(chat_id, tg_id):
     tg = state()
     trial = tg.get('shop', {}).get('trial', {}) or {}
     if not trial.get('enabled', True):
-        await send(chat_id, 'تست رایگان غیرفعال است.', _home_inline(), delete_prev=True)
+        await send(chat_id, 'Free trial is disabled.', _main_menu(), delete_prev=True)
         return
     tgs = tg.setdefault('tg_users', {})
     rec = tgs.get(str(tg_id))
     if rec and rec.get('trial_used'):
-        await send(chat_id, 'شما قبلاً تست رایگان رو استفاده کردید.', _home_inline(), delete_prev=True)
+        await send(chat_id, 'You already used the free trial.', _main_menu(), delete_prev=True)
         return
     name = f'trial_{tg_id}'
     try:
         res = await create_panel_user(name, int(trial.get('days', 1)), float(trial.get('gb', 2)), tg_id)
     except Exception as e:
-        await send(chat_id, f'خطا: {_esc(str(e))}', _home_inline(), delete_prev=True)
+        await send(chat_id, f'Error: {_esc(str(e))}', _main_menu(), delete_prev=True)
         return
     tgs[str(tg_id)] = {**(rec or {}), 'panel_user_id': res.get('user_id'), 'username': name, 'trial_used': True}
     asyncio.create_task(M.save_state())
     uid = res.get('user_id')
     async with M.USERS_LOCK: u = dict(M.USERS.get(uid)) if M.USERS.get(uid) else None
     sub = _user_sub_url(uid, u) if u else str(res.get('subscription_url', ''))
-    days_val = trial.get('days', 1)
-    gb_val = trial.get('gb', 2)
-    # Polished trial message like user.js purchase confirmation
-    await send(chat_id,
-               f'🎁 <b>تست رایگان شما آماده شد!</b> ✅\n\n'
-               f'🔑 <b>جزئیات اتصال:</b>\n\n'
-               f'🌐 <b>سرویس:</b> {gb_val} گیگابایت — {days_val} روزه\n'
-               f'👤 <b>نام کاربری:</b>\n<code>{name}</code>\n\n'
-               f'📱 <b>لینک اتصال:</b>\n<code>{_esc(sub)}</code>\n'
-               f'⏰ <b>مدت زمان:</b> {days_val} روز\n'
-               f'💾 <b>حجم:</b> {gb_val} گیگابایت\n'
-               f'🔌 <b>تعداد دستگاه:</b> نامحدود\n\n'
-               f'✅ <b>ممنون از خرید و اعتمادتون</b> ❤️\n\n'
-               f'⚡ اشتراک شما فعال شد! حالا می‌تونید بدون محدودیت و با بالاترین سرعت متصل شوید. 🚀',
-               _home_inline(), delete_prev=True)
+    await send(chat_id, f'Free trial activated!\n\nLink:\n<code>{_esc(sub)}</code>', _main_menu(), delete_prev=True)
     if u:
         photo = await _sub_qr_photo(uid, u)
-        if photo: await send_photo(chat_id, photo, caption=f'لینک:\n{sub}')
+        if photo: await send_photo(chat_id, photo, caption=f'Link:\n{sub}')
 
 # ========== ADMIN HANDLERS ==========
 async def _cb_admin_stats(chat_id, cb_id=''):
@@ -739,29 +514,20 @@ async def _cb_admin_stats(chat_id, cb_id=''):
     async with M.USERS_LOCK:
         users = len(M.USERS)
         active = sum(1 for u in M.USERS.values() if u.get('status') == 'active')
-        disabled = sum(1 for u in M.USERS.values() if u.get('status') == 'disabled')
         used = sum(u.get('traffic_used_bytes', 0) for u in M.USERS.values())
     tg = state()
     pending = len([o for o in tg.get('orders', []) if o.get('status', '').startswith('pending')])
-    total_orders = len(tg.get('orders', []))
     if cb_id: await answer_cb(cb_id)
-    await send(chat_id,
-               f'📊 <b>آمار سرور</b>\n'
-               f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n'
-               f'👥 <b>کل کاربران:</b> {users}\n'
-               f'🟢 فعال: <b>{active}</b> &nbsp; 🔴 غیرفعال: <b>{disabled}</b>\n\n'
-               f'📈 <b>مجموع مصرف ترافیک:</b> {_fmt_bytes(used)}\n\n'
-               f'📦 <b>سفارشات:</b> {total_orders} کل &nbsp;|&nbsp; ⏳ در انتظار: <b>{pending}</b>',
-               _admin_menu(), delete_prev=True)
+    await send(chat_id, f'Stats:\n\nUsers: {users} (active: {active})\nTotal traffic: {_fmt_bytes(used)}\nPending orders: {pending}', _admin_menu(), delete_prev=True)
 
 async def _cb_admin_users(chat_id, cb_id=''):
     M = _M()
     async with M.USERS_LOCK: items = list(M.USERS.items())
     items.sort(key=lambda kv: kv[1].get('created_at') or '', reverse=True)
-    lines = ['👥 <b>آخرین کاربران:</b>']
+    lines = ['Latest users:']
     for uid, u in items[:25]:
         lines.append(f"  {_esc(u.get('username'))} | {_esc(u.get('status'))} | {_fmt_bytes(u.get('traffic_used_bytes', 0))}")
-    if len(items) > 25: lines.append(f'\n... و {len(items)-25} کاربر دیگر')
+    if len(items) > 25: lines.append(f'\n... and {len(items)-25} more')
     if cb_id: await answer_cb(cb_id)
     await send(chat_id, '\n'.join(lines), _admin_menu(), delete_prev=True)
 
@@ -769,22 +535,17 @@ async def _cb_admin_orders(chat_id, cb_id=''):
     tg = state(); orders = tg.get('orders', [])
     if not orders:
         if cb_id: await answer_cb(cb_id)
-        await send(chat_id, '📦 <b>هنوز سفارشی ثبت نشده.</b>', _admin_menu(), delete_prev=True)
+        await send(chat_id, 'No orders.', _admin_menu(), delete_prev=True)
         return
     recent = list(reversed(orders))[:10]
-    lines = ['📦 <b>سفارشات اخیر</b>\n']
+    lines = []
     for o in recent:
-        st = o.get('status', '')
-        if st.startswith('pending'): icon = '⏳'
-        elif st == 'approved': icon = '✅'
-        else: icon = '❌'
+        icon = 'P' if o.get('status') == 'pending' else ('OK' if o.get('status') == 'approved' else 'X')
         pkg = o.get('package', {}) or {}
         price = pkg.get('price', o.get('amount', 0))
-        uname = _esc(str(o.get('username') or o.get('tg_id')))
-        title = _esc(pkg.get('title', o.get('id', '')))
-        lines.append(f'{icon} <b>{uname}</b> &nbsp;|&nbsp; {title} &nbsp;|&nbsp; <b>{price:,}</b> تومان')
+        lines.append(f"{icon} {_esc(str(o.get('username') or o.get('tg_id')))} | {pkg.get('title', o.get('id', ''))} | {price:,}")
     if cb_id: await answer_cb(cb_id)
-    await send(chat_id, '\n'.join(lines), _admin_menu(), delete_prev=True)
+    await send(chat_id, 'Recent orders:\n' + '\n'.join(lines), _admin_menu(), delete_prev=True)
 
 async def _approve_order(order_id, admin_id):
     M = _M(); tg = state(); order = next((o for o in tg.get('orders', []) if o['id'] == order_id), None)
@@ -812,27 +573,25 @@ async def _approve_order(order_id, admin_id):
     # Referral reward: credit referrer 1 point per approved order
     my_rec = tg.get('tg_users', {}).get(str(tg_id), {})
     referred_by = my_rec.get('referredBy')
-    referral_msg = ''
     if referred_by:
         inviter_rec = tg.get('tg_users', {}).get(str(referred_by), {})
         if inviter_rec:
             _credit_wallet(inviter_rec, 1, f'Referral reward: {order.get("package",{}).get("title","order")}')
+            inviter_rec['refCount'] = inviter_rec.get('refCount', 0) + 1
             await M.save_state()
-            referral_msg = f'\n🎁 دعوت‌کننده ({referred_by}) یک امتیاز گرفت!'
+            referral_msg = f'\nReferrer ({referred_by}) earned 1 point!'
+        else:
+            referral_msg = ''
+    else:
+        referral_msg = ''
     asyncio.create_task(M.save_state())
     _u = M.USERS.get(str(uid)) or {}
     sub = _user_sub_url(str(uid), _u) if _u else ''
-    referral_msg = '' if not referred_by else f'\n🎁 دعوت‌کننده ({referred_by}) یک امتیاز گرفت!'
-    await send(tg_id,
-               f'✅ <b>پرداخت تأیید شد!</b>{referral_msg}\n'
-               f'┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n\n'
-               f'📦 <b>بسته:</b> {_esc(pkg.get("title", ""))}\n'
-               f'🔗 <b>سابسکریپشن:</b> <code>{_esc(sub)}</code>',
-               _home_inline_ref(), delete_prev=True)
+    await send(tg_id, f'Payment approved!{referral_msg}\n\nPackage: {_esc(pkg.get("title", ""))}\nLink:\n<code>{_esc(sub)}</code>', _main_menu_with_ref(), delete_prev=True)
     if _u:
         photo = await _sub_qr_photo(str(uid), _u)
         if photo: await send_photo(tg_id, photo, caption=f'Link:\n{sub}')
-    return True, 'تأیید شد'
+    return True, 'Approved'
 
 async def _reject_order(order_id, admin_id):
     tg = state(); order = next((o for o in tg.get('orders', []) if o['id'] == order_id), None)
@@ -842,7 +601,7 @@ async def _reject_order(order_id, admin_id):
     tg.get('pending', {}).pop(str(order.get('tg_id')), None)
     asyncio.create_task(_M().save_state())
     await send(order.get('tg_id'), 'Payment rejected. Contact support.', _main_menu(), delete_prev=True)
-    return True, 'رد شد'
+    return True, 'Rejected'
 
 async def _notify_admins(text, order_id=None):
     tg = state(); kb = _order_action_menu(order_id) if order_id else None
@@ -908,9 +667,9 @@ async def _handle_receipt(chat_id, tg_id, msg):
     state()['orders'] = state().get('orders', []) + [order]
     asyncio.create_task(M.save_state())
     await _notify_admins(
-        f'📸 <b>رسید جدید!</b>\n👤 <b>کاربر:</b> <code>{_esc(order["username"])}</code>\n💰 <b>مبلغ:</b> <b>{order.get("amount",0):,}</b> تومان\n🔖 <b>TXT:</b> <code>{_esc(txn_id)}</code>\n📝 <b>توضیح:</b> {_esc(caption[:100]) or "—"}',
+        f'New receipt!\nUser: <code>{_esc(order["username"])}</code>\nAmount: <b>{order.get("amount",0):,}</b> Toman\nTXN: <code>{_esc(txn_id)}</code>\nNote: {_esc(caption[:100]) or "\u2014"}',
         order['id'])
-    await send(chat_id, '✅ رسید ثبت شد! منتظر تأیید ادمین باشید.', _main_menu(), delete_prev=True)
+    await send(chat_id, 'Receipt registered! Waiting for admin approval.', _main_menu(), delete_prev=True)
 
 # ========== UPDATE HANDLING ==========
 async def _handle_update(upd):
@@ -919,11 +678,6 @@ async def _handle_update(upd):
         chat_id = msg.get('chat', {}).get('id')
         tg_id = msg.get('from', {}).get('id')
         text = (msg.get('text') or '').strip()
-        # Store first_name for later commands
-        if tg_id and 'from' in msg:
-            fn = msg['from'].get('first_name') or ''
-            if fn:
-                state().setdefault('_last_names', {})[str(tg_id)] = fn
         if text.startswith('/'):
             cmd = text.split()[0].split('@')[0].lower()
             args = text.split()[1:]
@@ -931,7 +685,7 @@ async def _handle_update(upd):
         elif msg.get('photo') or msg.get('document'):
             await _handle_receipt(chat_id, tg_id, msg)
         elif text:
-            await send(chat_id, 'برای شروع /start بفرستید.', _main_menu(), delete_prev=True)
+            await send(chat_id, 'Send /start to begin.', _main_menu(), delete_prev=True)
     elif 'callback_query' in upd:
         cq = upd['callback_query']
         chat_id = cq.get('message', {}).get('chat', {}).get('id')
@@ -994,7 +748,7 @@ async def _handle_command(chat_id, tg_id, cmd, args, msg):
             if r.get('ok'): sent += 1
             else: failed += 1
             await asyncio.sleep(0.05)
-        await send(chat_id, f'پخش پیام: {sent} ارسال شد، {failed} خطا', _admin_menu(), delete_prev=True)
+        await send(chat_id, f'Broadcast: {sent} sent, {failed} failed', _admin_menu(), delete_prev=True)
     elif cmd == '/debug' and is_admin(tg_id):
         M = _M()
         async with M.USERS_LOCK: uc = len(M.USERS)
@@ -1034,7 +788,7 @@ async def _handle_callback(chat_id, tg_id, data, cb_id):
     elif data == 'menu:copyc':
         if cb_id: await answer_cb(cb_id)
         rec = state().get('tg_users', {}).get(str(tg_id), {})
-        await send(chat_id, f'کد دعوت شما:\n<code>{rec.get("referralCode", "—")}</code>\n\nاین کد را برای دوستان ارسال کنید.', _ref_submenu(), delete_prev=True)
+        await send(chat_id, f'Your referral code:\n<code>{rec.get("referralCode", "—")}</code>\n\nSend this to friends via DM.', _ref_submenu(), delete_prev=True)
     elif data.startswith('buy:'):
         await _cb_buy_from_keyboard(chat_id, tg_id, data.split(':', 1)[1])
     elif data == 'admin:stats' and is_admin(tg_id):
@@ -1067,7 +821,7 @@ async def _cb_buy_from_keyboard(chat_id, tg_id, pkg_id):
     card = shop.get('card_number') or '\u2014'
     holder = shop.get('card_holder') or '\u2014'
     await send(chat_id,
-               f'{pkg["title"]}\nPrice: <b>{pkg["price"]:,} Toman</b>\n{"Renew existing" if is_renew else "Create new"}\n\n🏦 <b>شماره کارت:</b> <code>{_esc(card)}</code>\n👤 <b>دارنده:</b> <code>{_esc(holder)}</code>\n\n⬇️ بعد از واریز، رسید پرداخت را ارسال کنید.',
+               f'{pkg["title"]}\nPrice: <b>{pkg["price"]:,} Toman</b>\n{"Renew existing" if is_renew else "Create new"}\n\nCard: <code>{_esc(card)}</code>\nHolder: <code>{_esc(holder)}</code>\n\nSend receipt after payment.',
                delete_prev=True)
     order = {'id': f'ord_{int(time.time())}_{pkg_id}_{tg_id}', 'tg_id': int(tg_id), 'package': pkg,
              'status': 'pending_payment', 'created_at': M.datetime.now().isoformat(),
@@ -1076,7 +830,7 @@ async def _cb_buy_from_keyboard(chat_id, tg_id, pkg_id):
     state()['pending'][str(tg_id)] = order['id']
     asyncio.create_task(M.save_state())
     await _notify_admins(
-        f'🆕 سفارش جدید!\n👤 <b>کاربر:</b> <code>{tg_id}</code>\n📦 <b>بسته:</b> {pkg["title"]}\n💰 <b>مبلغ:</b> {pkg["price"]:,} تومان\n🔖 <b>ID:</b> <code>{order["id"]}</code>',
+        f'New order!\nUser: <code>{tg_id}</code>\nPackage: {pkg["title"]}\nAmount: {pkg["price"]:,} Toman\nID: <code>{order["id"]}</code>',
         order['id'])
 
 # ========== POLLING ==========

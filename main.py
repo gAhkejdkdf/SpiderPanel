@@ -101,15 +101,15 @@ CONFIG = {
     # The panel must always listen on 8080 (the user's VPN clients and any
     # Railway TCP relay expect this port). Never let a PORT env var override it.
     "port": 8080,
-    "secret": os.environ.get("SECRET_KEY", "spider-panel-secret-key-v2"),
+    "secret": os.environ.get("SECRET_KEY", secrets.token_urlsafe(32)),
     "host": os.environ.get("RAILWAY_PUBLIC_DOMAIN", "localhost"),
 }
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=[],  # No cross-origin access; panel is served from same origin
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -590,6 +590,9 @@ def log_activity(kind: str, message: str, level: str = "info"):
 # ── Auth ──────────────────────────────────────────────────────────────────────
 SESSION_COOKIE = "spider_session"
 SESSION_TTL = 60 * 60 * 24 * 7
+CSRF_COOKIE = "spider_csrf"
+CSRF_TOKENS: dict = {}   # ip -> {token, timestamp}
+CSRF_LOCK = asyncio.Lock()
 
 # ── Rate Limiting ────────────────────────────────────────────────────────────
 _LOGIN_ATTEMPTS: dict = {}  # ip → [(timestamp, success)]
@@ -620,7 +623,14 @@ def _record_login_attempt(ip: str, success: bool):
 def hash_password(pw: str) -> str:
     return hashlib.sha256(f"{pw}{CONFIG['secret']}".encode()).hexdigest()
 
-AUTH = {"password_hash": hash_password(os.environ.get("ADMIN_PASSWORD", "admin"))}
+AUTH_SECRET = os.environ.get("ADMIN_PASSWORD")
+if not AUTH_SECRET:
+    import logging
+    _logger = logging.getLogger(__name__)
+    _GEN_PWD = secrets.token_urlsafe(24)
+    _logger.warning("⚠️  ADMIN_PASSWORD not set — auto-generated random password: %s", _GEN_PWD)
+    AUTH_SECRET = _GEN_PWD
+AUTH = {"password_hash": hash_password(AUTH_SECRET)}
 SESSIONS: dict = {}
 SESSIONS_LOCK = asyncio.Lock()
 
@@ -628,6 +638,14 @@ async def create_session() -> str:
     token = secrets.token_urlsafe(32)
     async with SESSIONS_LOCK:
         SESSIONS[token] = time.time() + SESSION_TTL
+    return token
+
+
+async def generate_csrf_token(ip: str) -> str:
+    """Generate a fresh CSRF token for the given client IP."""
+    token = secrets.token_urlsafe(32)
+    async with CSRF_LOCK:
+        CSRF_TOKENS[ip] = {"token": token, "ts": time.time()}
     return token
 
 async def is_valid_session(token: str | None) -> bool:
@@ -875,17 +893,6 @@ def generate_wg_config(user_id: str, user: dict, inbound: dict, remark_tag: str 
         address = wg.get("address") or "172.16.0.2/32"
         dns = wg.get("dns") or "1.1.1.1, 1.0.0.1"
 
-    # AmneziaWG parameters
-    jc = wg.get("jc") or "3"
-    jmin = wg.get("jmin") or "1"
-    jmax = wg.get("jmax") or "3"
-    s1 = wg.get("s1") or "0"
-    s2 = wg.get("s2") or "0"
-    h1 = wg.get("h1") or "1"
-    h2 = wg.get("h2") or "2"
-    h3 = wg.get("h3") or "3"
-    h4 = wg.get("h4") or "4"
-    i1 = wg.get("i1") or ""
 
     rem = f"PANAHANNET-{username}-WG"
     if remark_tag:
@@ -915,265 +922,6 @@ AllowedIPs = 0.0.0.0/0, ::/0
 Endpoint = {endpoint}
 """
     return config.strip()
-
-
-def _wg_read_endpoints() -> list:
-    """Read available endpoints from data/endpoint.txt."""
-    ep_file = Path(os.path.dirname(os.path.abspath(__file__))) / "data" / "endpoint.txt"
-    if not ep_file.is_file():
-        ep_file = DATA_DIR / "endpoint.txt"
-    if not ep_file.is_file():
-        return []
-    out = []
-    for line in ep_file.read_text(errors="ignore").splitlines():
-        line = line.strip()
-        if line and ":" in line and not line.startswith("#"):
-            out.append(line)
-    return out
-
-
-def generate_wg_config(user_id: str, user: dict, inbound: dict, remark_tag: str = None) -> str:
-    """Generate an AmneziaWG config for a user based on the inbound settings.
-
-    Supports two modes:
-    - WARP mode (warp_mode=True): Uses Cloudflare WARP infrastructure with
-      proper WARP PublicKey, Address (IPv4+IPv6), DNS, and endpoints.
-    - Custom mode (warp_mode=False): Uses user-defined server settings.
-    """
-    username = user.get("username", user_id)
-    wg = inbound.get("wireguard_settings") or {}
-    warp_mode = bool(wg.get("warp_mode"))
-
-    # Generate per-user WireGuard private key
-    priv_key, _ = _wg_gen_keypair()
-    if not priv_key:
-        return ""
-
-    # AmneziaWG obfuscation parameters
-    jc = wg.get("jc") or "3"
-    jmin = wg.get("jmin") or "1"
-    jmax = wg.get("jmax") or "3"
-    s1 = wg.get("s1") or "0"
-    s2 = wg.get("s2") or "0"
-    h1 = wg.get("h1") or "1"
-    h2 = wg.get("h2") or "2"
-    h3 = wg.get("h3") or "3"
-    h4 = wg.get("h4") or "4"
-    i1 = wg.get("i1") or ""
-
-    if warp_mode:
-        # ── WARP mode: use Cloudflare WARP infrastructure ──
-        # Fixed WARP PublicKey (same for all WARP users)
-        server_pub = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="
-        # WARP address: 172.16.0.x/32 + IPv6
-        address = wg.get("address") or "172.16.0.2/32, 2606:4700:110::2/128"
-        # WARP DNS: Cloudflare DNS with IPv6
-        dns = wg.get("dns") or "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
-        mtu = wg.get("mtu") or "1280"
-        # Endpoint from the configured endpoint (should be a Cloudflare WARP IP)
-        endpoint = wg.get("endpoint") or "8.6.112.4:443"
-    else:
-        # ── Custom WireGuard server mode ──
-        server_pub = wg.get("server_public_key") or ""
-        if not server_pub:
-            _, server_pub = _wg_gen_keypair()
-        endpoint = wg.get("endpoint") or "8.6.112.4:443"
-        mtu = wg.get("mtu") or "1280"
-        address = wg.get("address") or "172.16.0.2/32"
-        dns = wg.get("dns") or "1.1.1.1, 1.0.0.1"
-
-    # AmneziaWG parameters
-    jc = wg.get("jc") or "3"
-    jmin = wg.get("jmin") or "1"
-    jmax = wg.get("jmax") or "3"
-    s1 = wg.get("s1") or "0"
-    s2 = wg.get("s2") or "0"
-    h1 = wg.get("h1") or "1"
-    h2 = wg.get("h2") or "2"
-    h3 = wg.get("h3") or "3"
-    h4 = wg.get("h4") or "4"
-    i1 = wg.get("i1") or ""
-
-    rem = f"PANAHANNET-{username}-WG"
-    if remark_tag:
-        rem = f"{rem} {remark_tag}"
-
-    config = f"""# AmneziaWG Config
-
-[Interface]
-PrivateKey = {priv_key}
-Address = {address}
-DNS = {dns}
-MTU = {mtu}
-Jc = {jc}
-Jmin = {jmin}
-Jmax = {jmax}
-S1 = {s1}
-S2 = {s2}
-H1 = {h1}
-H2 = {h2}
-H3 = {h3}
-H4 = {h4}
-I1 = {i1}
-
-[Peer]
-PublicKey = {server_pub}
-AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = {endpoint}
-"""
-    return config.strip()
-
-
-def _wg_read_endpoints() -> list:
-    """Read available endpoints from data/endpoint.txt."""
-    ep_file = Path(os.path.dirname(os.path.abspath(__file__))) / "data" / "endpoint.txt"
-    if not ep_file.is_file():
-        ep_file = DATA_DIR / "endpoint.txt"
-    if not ep_file.is_file():
-        return []
-    out = []
-    for line in ep_file.read_text(errors="ignore").splitlines():
-        line = line.strip()
-        if line and ":" in line and not line.startswith("#"):
-            out.append(line)
-    return out
-
-
-def generate_wg_config(user_id: str, user: dict, inbound: dict, remark_tag: str = None) -> str:
-    """Generate an AmneziaWG config for a user based on the inbound settings.
-
-    Supports two modes:
-    - WARP mode (warp_mode=True): Uses Cloudflare WARP infrastructure with
-      proper WARP PublicKey, Address (IPv4+IPv6), DNS, and endpoints.
-    - Custom mode (warp_mode=False): Uses user-defined server settings.
-    """
-    username = user.get("username", user_id)
-    wg = inbound.get("wireguard_settings") or {}
-    warp_mode = bool(wg.get("warp_mode"))
-
-    # Generate per-user WireGuard private key
-    priv_key, _ = _wg_gen_keypair()
-    if not priv_key:
-        return ""
-
-    # AmneziaWG obfuscation parameters
-    jc = wg.get("jc") or "3"
-    jmin = wg.get("jmin") or "1"
-    jmax = wg.get("jmax") or "3"
-    s1 = wg.get("s1") or "0"
-    s2 = wg.get("s2") or "0"
-    h1 = wg.get("h1") or "1"
-    h2 = wg.get("h2") or "2"
-    h3 = wg.get("h3") or "3"
-    h4 = wg.get("h4") or "4"
-    i1 = wg.get("i1") or ""
-
-    if warp_mode:
-        # ── WARP mode: use Cloudflare WARP infrastructure ──
-        # Fixed WARP PublicKey (same for all WARP users)
-        server_pub = "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo="
-        # WARP address: 172.16.0.x/32 + IPv6
-        address = wg.get("address") or "172.16.0.2/32, 2606:4700:110::2/128"
-        # WARP DNS: Cloudflare DNS with IPv6
-        dns = wg.get("dns") or "1.1.1.1, 1.0.0.1, 2606:4700:4700::1111, 2606:4700:4700::1001"
-        mtu = wg.get("mtu") or "1280"
-        # Endpoint from the configured endpoint (should be a Cloudflare WARP IP)
-        endpoint = wg.get("endpoint") or "8.6.112.4:443"
-    else:
-        # ── Custom WireGuard server mode ──
-        server_pub = wg.get("server_public_key") or ""
-        if not server_pub:
-            _, server_pub = _wg_gen_keypair()
-        endpoint = wg.get("endpoint") or "8.6.112.4:443"
-        mtu = wg.get("mtu") or "1280"
-        address = wg.get("address") or "172.16.0.2/32"
-        dns = wg.get("dns") or "1.1.1.1,1.0.0.1"
-
-    rem = f"PANAHANNET-{username}-WG"
-    if remark_tag:
-        rem = f"{rem} {remark_tag}"
-
-    config = f"""# AmneziaWG Config
-[Interface]
-PrivateKey = {priv_key}
-Address = {address}
-DNS = {dns}
-MTU = {mtu}
-Jc = {jc}
-Jmin = {jmin}
-Jmax = {jmax}
-S1 = {s1}
-S2 = {s2}
-H1 = {h1}
-H2 = {h2}
-H3 = {h3}
-H4 = {h4}
-I1 = {i1}
-
-[Peer]
-PublicKey = {server_pub}
-AllowedIPs = 0.0.0.0/0, ::/0
-Endpoint = {endpoint}
-"""
-    return config.strip()
-
-
-def _railway_tcp_info() -> dict:
-    """Return Railway TCP Proxy routing metadata when TCP Proxy is enabled.
-
-    Railway exposes the externally reachable hostname/port separately from the
-    service's internal application port. Telegram MTProto must listen on the
-    internal TCP application port, while user links must use the public TCP
-    proxy domain/port.
-    """
-    domain = str(os.getenv("RAILWAY_TCP_PROXY_DOMAIN") or "").strip()
-    try:
-        public_port = int(str(os.getenv("RAILWAY_TCP_PROXY_PORT") or "0").strip() or 0)
-    except Exception:
-        public_port = 0
-    try:
-        app_port = int(str(os.getenv("RAILWAY_TCP_APPLICATION_PORT") or "0").strip() or 0)
-    except Exception:
-        app_port = 0
-    return {"domain": domain, "public_port": public_port, "application_port": app_port,
-            "enabled": bool(domain and public_port and app_port)}
-
-
-@app.get("/api/telegram/railway-info")
-async def telegram_railway_info(_=Depends(require_auth)):
-    info = _railway_tcp_info()
-    return {"ok": True, "advisory": True, "message": "Railway TCP variables are informational only; inbound External Domain/Port are authoritative.", **info}
-
-
-def generate_telegram_proxy_link(user_id: str, user: dict, inbound: dict, remark_tag: str = None) -> str:
-    """Generate a Telegram Proxy link for a user based on the inbound settings.
-
-    The secret is deterministic per user (derived from config_uuid) and stored
-    on the user record so it remains stable across config regenerations.
-    """
-    from telegram_proxy import derive_secret_from_uuid
-
-    username = user.get("username", user_id)
-    config_uuid = user.get("config_uuid", user_id)
-    tg = inbound.get("telegram_settings") or {}
-
-    # Telegram inbound settings are authoritative. Railway TCP variables are
-    # advisory only and must not override what the user entered in the inbound.
-    external_domain = str(tg.get("external_domain") or inbound.get("external_domain") or "").strip()
-    try:
-        external_port = int(tg.get("external_port") or inbound.get("external_port") or 0)
-    except Exception:
-        external_port = 0
-    if not external_domain or not external_port:
-        return ""
-
-    # Use stored secret or derive a stable one
-    secret = user.get("telegram_secret") or derive_secret_from_uuid(config_uuid)
-
-    # Note: Telegram t.me/proxy links don't support #remark fragment like VLESS links
-    # The name is set by the user in the Telegram app after adding the proxy
-    link = f"https://t.me/proxy?server={external_domain}&port={external_port}&secret={secret}"
-    return link
 
 
 XRAY_URL = "https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip"
@@ -2732,10 +2480,26 @@ async def sub_group_subscription(uuid_key: str, request: Request):
     return await _group_subscription_response(sub, request)
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
+@app.get("/api/csrf-token")
+async def api_csrf_token(request: Request):
+    """Return a fresh CSRF token and set it as a cookie."""
+    ip = client_ip(request)
+    token = await generate_csrf_token(ip)
+    resp = JSONResponse({"csrf_token": token})
+    resp.set_cookie(CSRF_COOKIE, token, httponly=False, samesite="lax", path="/")
+    return resp
+
 @app.post("/api/login")
 async def api_login(request: Request):
     body = await request.json()
     ip = client_ip(request)
+    # CSRF validation
+    form_csrf = (body.get("csrf_token") or "").strip()
+    cookie_csrf = request.cookies.get(CSRF_COOKIE)
+    async with CSRF_LOCK:
+        stored = CSRF_TOKENS.get(ip, {})
+    if not form_csrf or not cookie_csrf or form_csrf != cookie_csrf or form_csrf != stored.get("token"):
+        raise HTTPException(status_code=403, detail="CSRF token validation failed")
     # Rate limit check
     allowed, reason = _check_login_rate_limit(ip)
     if not allowed:
@@ -2745,11 +2509,15 @@ async def api_login(request: Request):
         _record_login_attempt(ip, False)
         log_activity("auth", f"تلاش ورود ناموفق از {ip}", "err")
         raise HTTPException(status_code=401, detail="رمز عبور اشتباه است")
+    # Invalidate CSRF token after successful use
+    async with CSRF_LOCK:
+        CSRF_TOKENS.pop(ip, None)
     _record_login_attempt(ip, True)
     token = await create_session()
     log_activity("auth", f"ورود موفق به پنل از {ip}", "ok")
     resp = JSONResponse({"ok": True})
-    resp.set_cookie(SESSION_COOKIE, token, max_age=SESSION_TTL, httponly=True, samesite="lax", path="/")
+    resp.set_cookie(SESSION_COOKIE, token, max_age=SESSION_TTL, httponly=True, secure=True, samesite="lax", path="/")
+    resp.delete_cookie(CSRF_COOKIE, path="/")
     return resp
 
 @app.post("/api/logout")
@@ -3865,99 +3633,6 @@ async def reset_user_traffic(user_id: str, _=Depends(require_auth)):
     log_activity("user", f"مصرف کاربر «{username}» ریست شد", "info")
     return {"ok": True, "user_id": user_id, "traffic_used_bytes": 0}
 
-@app.patch("/api/users/{user_id}")
-async def edit_user(user_id: str, request: Request, _=Depends(require_auth)):
-    """Edit an existing user."""
-    body = await request.json()
-    async with USERS_LOCK:
-        if user_id not in USERS:
-            raise HTTPException(status_code=404, detail="user not found")
-        u = USERS[user_id]
-        if "username" in body:
-            u["username"] = str(body["username"]).strip()[:40]
-        if "traffic_limit_gb" in body:
-            gb = float(body["traffic_limit_gb"])
-            u["traffic_limit_bytes"] = int(gb * 1024**3) if gb > 0 else 0
-        if "expire_days" in body:
-            days = int(body["expire_days"])
-            u["expire_at"] = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
-        if "protocol" in body:
-            p = str(body["protocol"]).lower()
-            if p in USER_PROTOCOLS:
-                u["protocol"] = p
-        if "status" in body:
-            u["status"] = str(body["status"])
-        if "sni" in body:
-            u["sni"] = str(body["sni"]).strip()
-        if "path" in body:
-            # Update PATH_INDEX when path changes
-            old_path = (u.get("path") or "").strip().lstrip("/")
-            new_path = str(body["path"]).strip().lstrip("/")
-            u["path"] = new_path
-            if old_path:
-                PATH_INDEX.pop(old_path, None)
-            if new_path:
-                PATH_INDEX[new_path] = u.get("config_uuid", user_id)
-        if "transport_type" in body:
-            u["transport_type"] = str(body["transport_type"]).strip().lower()
-        if "concurrent_connections" in body:
-            u["concurrent_connections"] = max(0, int(body["concurrent_connections"]))
-        if "reset_traffic" in body and body["reset_traffic"]:
-            u["traffic_used_bytes"] = 0
-        if "custom_ip_type" in body:
-            ct = str(body["custom_ip_type"] or "").strip().lower()
-            u["custom_ip_type"] = ct if ct in _SCANNED_TYPES else ""
-        if "sni_spoof_v2box" in body:
-            u["sni_spoof_v2box"] = bool(body["sni_spoof_v2box"])
-        if "fake_sni" in body:
-            u["fake_sni"] = str(body["fake_sni"] or "").strip()
-        if "spoof_ip" in body:
-            u["spoof_ip"] = str(body["spoof_ip"] or "").strip()
-        if "proxy_ip_enabled" in body:
-            en = bool(body["proxy_ip_enabled"])
-            u["proxy_ip_enabled"] = en and WORKER.get("connected")
-        if "proxy_countries" in body:
-            pc = [str(x).strip().lower() for x in (body["proxy_countries"] or []) if str(x).strip()]
-            u["proxy_countries"] = pc
-            if pc:
-                u["proxy_country"] = pc[0]
-        elif "proxy_country" in body:
-            u["proxy_country"] = str(body["proxy_country"] or "").strip().lower()
-            u["proxy_countries"] = [u["proxy_country"]] if u["proxy_country"] else []
-        if "inbound_ids" in body:
-            raw_ids = [str(x).strip() for x in (body["inbound_ids"] or []) if str(x).strip()]
-            valid = [i for i in raw_ids if i in INBOUNDS]
-            u["inbound_ids"] = valid
-            if valid:
-                u["inbound_id"] = valid[0]
-            else:
-                u.pop("inbound_id", None)
-        # Ensure a Telegram secret exists whenever the edited user has a Telegram inbound.
-        if any((INBOUNDS.get(i, {}).get("protocol") or "").lower() == "telegram" for i in (u.get("inbound_ids") or [])):
-            from telegram_proxy import derive_secret_from_uuid
-            cur_secret = str(u.get("telegram_secret") or "").strip().lower()
-            if not re.fullmatch(r"[0-9a-f]{32}", cur_secret):
-                u["telegram_secret"] = derive_secret_from_uuid(u.get("config_uuid", user_id))
-    # If the user uses the worker inbound, push updated volume/expiry to the worker.
-    if WORKER.get("connected") and _user_uses_worker_inbound(u):
-        asyncio.create_task(_worker_sync_users())
-    asyncio.create_task(save_state())
-    for _tg_iid in [i for i in (u.get("inbound_ids") or []) if (INBOUNDS.get(i, {}).get("protocol") or "").lower() == "telegram"]:
-        asyncio.create_task(_restart_telegram_proxy(_tg_iid))
-    return {"ok": True, "user_id": user_id}
-
-@app.get("/api/users/{user_id}")
-async def get_user(user_id: str, _=Depends(require_auth)):
-    """Get single user details."""
-    async with USERS_LOCK:
-        if user_id not in USERS:
-            raise HTTPException(status_code=404, detail="user not found")
-        u = dict(USERS[user_id])
-        u["user_id"] = user_id
-        u["password_hash"] = None
-        return u
-
-
 @app.delete("/api/users/{user_id}")
 async def delete_user(user_id: str, _=Depends(require_auth)):
     """Delete a user permanently."""
@@ -4512,13 +4187,12 @@ async def get_reality_settings(_=Depends(require_auth)):
     host = get_host()
     return {
         "port": reality.get("port", 1234),
-        "dest": reality.get("dest", "google.com:443"),
+        "dest": reality.get("dest", "is1-ssl.mzstatic.com:443"),
         "sni": reality.get("sni", host),
         "public_key": reality.get("public_key", ""),
         "short_id": reality.get("short_id", "6ba85179e30d4fc2"),
         "spiderx": reality.get("spiderx", "/"),
         "fingerprint": reality.get("fingerprint", "chrome"),
-        "dest": reality.get("dest", "is1-ssl.mzstatic.com:443"),
         "external_domain": reality.get("external_domain", host),
         "external_port": reality.get("external_port", 443),
         "domain": reality.get("domain", host),
