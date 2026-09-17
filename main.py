@@ -22,7 +22,7 @@ import io
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("Spider-Gateway")
+logger = logging.getLogger("PANAHANNET-Gateway")
 
 try:
     import qrcode
@@ -33,6 +33,46 @@ except ImportError:
     logger.warning("qrcode/PIL not installed -- QR endpoints will return 501")
 
 from pathlib import Path
+
+# ── Central branding + panel path (PANAHANNET) ──────────────────────────────
+from brand import BRAND, PANEL_PATH, EDITABLE_BRAND_KEYS, normalize_panel_path
+
+
+def brand(key: str, default: str = "") -> str:
+    """Resolve a brand value: runtime SETTINGS override → env/default BRAND."""
+    try:
+        b = SETTINGS.get("brand") or {}
+        v = b.get(key)
+        if v not in (None, ""):
+            return str(v)
+    except Exception:
+        pass
+    return str(BRAND.get(key, default) or default)
+
+
+def brand_prefix() -> str:
+    """Prefix used in config remark names, e.g. ``PANAHANNET-username``."""
+    return brand("name_prefix", "PANAHANNET") or "PANAHANNET"
+
+
+async def _serve_branded_html(filename: str) -> HTMLResponse:
+    """Serve a static HTML file with panel path + brand injected as globals."""
+    fp = _os.path.join(_STATIC_DIR, filename)
+    try:
+        async with aiofiles.open(fp, "r", encoding="utf-8") as f:
+            html = await f.read()
+    except Exception:
+        return HTMLResponse(content="<h2>not found</h2>", status_code=404)
+    inject = (
+        "<script>window.__PANEL_PATH__=" + json.dumps(PANEL_PATH) + ";"
+        "window.__BRAND__=" + json.dumps({k: brand(k) for k in EDITABLE_BRAND_KEYS}, ensure_ascii=False) + ";"
+        "</script>"
+    )
+    if "<head>" in html:
+        html = html.replace("<head>", "<head>" + inject, 1)
+    else:
+        html = inject + html
+    return HTMLResponse(content=html)
 
 from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse, FileResponse
@@ -50,7 +90,7 @@ _sys.modules.setdefault("main", _sys.modules[__name__])
 
 IRAN_TZ = ZoneInfo("Asia/Tehran")
 
-app = FastAPI(title="Spider Gateway", docs_url=None, redoc_url=None)
+app = FastAPI(title="PANAHANNET Gateway", docs_url=None, redoc_url=None)
 
 # Import and include xhttp_siz10 router - deferred until globals are defined
 xhttp_router = None
@@ -196,6 +236,8 @@ async def load_state():
     _migrate_user_uuids()
     # Rebuild again so the re-keyed links/paths are indexed.
     _rebuild_path_index()
+    # Hydrate secure subscription hashes for every user/link/group.
+    rebuild_sub_hash_index()
 
 
 def _migrate_user_links():
@@ -340,6 +382,50 @@ SUBS_LOCK = asyncio.Lock()
 USERS: dict = {}
 USERS_LOCK = asyncio.Lock()
 
+# ── Secure subscription hashes (domain.com/sub/<hash>) ───────────────────────
+# Every user, legacy link and sub-group gets a stable, unguessable `sub_hash`.
+# Public subscription URLs use the hash instead of the raw UUID, so an exposed
+# sublink never leaks the underlying config UUID.
+SUB_HASH_INDEX: dict = {}   # hash -> {"kind": "user"|"link"|"group", "id": str}
+SUB_HASH_LOCK = asyncio.Lock()
+
+
+def _make_sub_hash(kind: str, ident: str) -> str:
+    return hashlib.sha256(f"{kind}:{ident}:{CONFIG['secret']}".encode()).hexdigest()[:28]
+
+
+def sub_hash_for(kind: str, ident: str, obj: dict | None = None) -> str:
+    """Return a stable sub hash for a user/link/group, persisting it on `obj`."""
+    ident = str(ident)
+    if obj is not None:
+        existing = str(obj.get("sub_hash") or "").strip()
+        if existing:
+            SUB_HASH_INDEX[existing] = {"kind": kind, "id": ident}
+            return existing
+    h = _make_sub_hash(kind, ident)
+    if obj is not None:
+        obj["sub_hash"] = h
+    SUB_HASH_INDEX[h] = {"kind": kind, "id": ident}
+    return h
+
+
+def build_sub_url(host: str, kind: str, ident: str, obj: dict | None = None) -> str:
+    """Build a public subscription URL: https://<host>/sub/<hash>."""
+    h = sub_hash_for(kind, ident, obj)
+    return f"https://{host}{BRAND.get('sub_prefix', '/sub')}/{h}"
+
+
+def rebuild_sub_hash_index():
+    """(Re)build the hash→entity index from all users, links and groups."""
+    SUB_HASH_INDEX.clear()
+    for uid, u in USERS.items():
+        sub_hash_for("user", uid, u)
+    for lid, l in LINKS.items():
+        sub_hash_for("link", lid, l)
+    for sid, s in SUBS.items():
+        sub_hash_for("group", sid, s)
+    logger.info(f"SUB_HASH_INDEX rebuilt: {len(SUB_HASH_INDEX)} entries")
+
 # ── Settings ──────────────────────────────────────────────────────────────
 SETTINGS = {
     "websocket_mode": True,
@@ -357,6 +443,19 @@ SETTINGS = {
     # Panel audio (uploaded by admin)
     "panel_audio": "",
     "panel_audio_enabled": False,
+    # ── Branding (PANAHANNET) — editable from panel settings ──
+    "brand": {k: BRAND[k] for k in EDITABLE_BRAND_KEYS},
+    "panel_path": PANEL_PATH,
+    # ── Telegram bot + shop (managed by telegram_bot.py) ──
+    "telegram": {
+        "enabled": True,
+        "bot_token": BRAND.get("bot_token", ""),
+        "admin_ids": [],
+        "shop": {},
+        "orders": [],
+        "tg_users": {},
+        "pending": {},
+    },
     # Reality defaults (3x-ui style)
     "reality": {
         "port": 1234,
@@ -743,7 +842,7 @@ def generate_wg_config(user_id: str, user: dict, inbound: dict, remark_tag: str 
     h4 = wg.get("h4") or "4"
     i1 = wg.get("i1") or ""
 
-    rem = f"Spider-{username}-WG"
+    rem = f"PANAHANNET-{username}-WG"
     if remark_tag:
         rem = f"{rem} {remark_tag}"
 
@@ -850,7 +949,7 @@ def generate_wg_config(user_id: str, user: dict, inbound: dict, remark_tag: str 
     h4 = wg.get("h4") or "4"
     i1 = wg.get("i1") or ""
 
-    rem = f"Spider-{username}-WG"
+    rem = f"PANAHANNET-{username}-WG"
     if remark_tag:
         rem = f"{rem} {remark_tag}"
 
@@ -945,7 +1044,7 @@ def generate_wg_config(user_id: str, user: dict, inbound: dict, remark_tag: str 
         address = wg.get("address") or "172.16.0.2/32"
         dns = wg.get("dns") or "1.1.1.1,1.0.0.1"
 
-    rem = f"Spider-{username}-WG"
+    rem = f"PANAHANNET-{username}-WG"
     if remark_tag:
         rem = f"{rem} {remark_tag}"
 
@@ -1337,7 +1436,7 @@ async def startup():
         except Exception as e:
             logger.warning(f"Xray apply on boot failed: {e}")
     log_activity("system", "سرور راه‌اندازی شد", "ok")
-    logger.info(f"Spider Gateway v9.2 (commit 24d7594) started on port {CONFIG['port']}")
+    logger.info(f"PANAHANNET Gateway v9.2 (commit 24d7594) started on port {CONFIG['port']}")
     # Include XHTTP router for xhttp-siz10 endpoints (globals are now defined)
     global xhttp_router
     from xhttp_siz10 import router as xhttp_router
@@ -1348,6 +1447,14 @@ async def startup():
 
     # Start Telegram Proxy instances for all existing TG inbounds
     await _start_all_telegram_proxies()
+
+    # Register + start the PANAHANNET Telegram bot (long polling).
+    try:
+        import telegram_bot as _tg_bot
+        _tg_bot.register(app)
+        asyncio.create_task(_tg_bot._start_telegram_bot())
+    except Exception as _e:
+        logger.warning(f"Telegram bot init failed: {_e}")
 
 
 # ── Telegram Proxy Lifecycle ────────────────────────────────────────────────
@@ -1565,7 +1672,7 @@ def generate_random_path(prefix: str = "", length: int = 6) -> str:
 def now_ir() -> datetime:
     return datetime.now(IRAN_TZ)
 
-def generate_vless_link(uuid: str, host: str, remark: str = "Spider", protocol: str = DEFAULT_PROTOCOL) -> str:
+def generate_vless_link(uuid: str, host: str, remark: str = "PANAHANNET", protocol: str = DEFAULT_PROTOCOL) -> str:
     """می‌سازد VLESS share-link متناسب با پروتکل انتخاب‌شده (WS کلاسیک یا یکی از مدهای XHTTP)."""
     if protocol == "vless-ws":
         path = f"/ws/{uuid}"
@@ -1714,7 +1821,7 @@ def generate_user_config(user_id: str, user: dict, inbound_id: str = None, addr:
 
     config_uuid = user.get("config_uuid", "") or user_id
     username = user.get("username", user_id)
-    rem = f"Spider-{username}"
+    rem = f"PANAHANNET-{username}"
     if remark_tag:
         rem = f"{rem} {remark_tag}"
     remark = quote(rem)
@@ -1821,7 +1928,7 @@ def generate_user_config(user_id: str, user: dict, inbound_id: str = None, addr:
             params = ("encryption=none&security=tls&type=ws"
                       f"&host={quote(wdom)}&path={quote(rpath, safe='')}&sni={quote(wdom)}"
                       "&fp=chrome&alpn=http/1.1")
-            rev_rem = quote(f"Spider-{username} Reverse".strip())
+            rev_rem = quote(f"PANAHANNET-{username} Reverse".strip())
             return f"vless://{config_uuid}@{wdom}:443?{params}#{rev_rem}"
         # Plain tunnel: user → Railway → Worker → site (path /tunnel/{uuid},
         # addressed to the panel/Railway domain).
@@ -1829,7 +1936,7 @@ def generate_user_config(user_id: str, user: dict, inbound_id: str = None, addr:
         params = ("encryption=none&security=tls&type=ws"
                   f"&host={quote(panel_domain)}&path={quote(tpath, safe='')}&sni={quote(panel_domain)}"
                   "&fp=chrome&alpn=http/1.1")
-        tun_rem = quote(f"Spider-{username} Tunnel".strip())
+        tun_rem = quote(f"PANAHANNET-{username} Tunnel".strip())
         return f"vless://{config_uuid}@{panel_domain}:443?{params}#{tun_rem}"
 
     host = addr_ip or panel_domain
@@ -2079,7 +2186,7 @@ def generate_sni_spoof_configs(user_id: str, user: dict) -> list:
             for code, p in chosen:
                 flag = _code_to_flag(code) if code else ""
                 clabel = str(p.get("country") or (code.upper() if code else "Worker"))
-                rem = quote(f"Spider-{uname} {flag} {clabel} SniSpoof".strip() if flag else f"Spider-{uname} Worker SniSpoof")
+                rem = quote(f"PANAHANNET-{uname} {flag} {clabel} SniSpoof".strip() if flag else f"PANAHANNET-{uname} Worker SniSpoof")
 
                 wpath = f"/route/{code}" if code else "/"
                 params = "&".join([
@@ -2124,7 +2231,7 @@ def generate_sni_spoof_configs(user_id: str, user: dict) -> list:
                           f"&host={quote(panel_domain)}&path={quote(ws_path, safe='')}&sni={quote(panel_domain)}"
                           f"&fp=chrome&alpn=http/1.1"
                           f"&snispoofing={spoof_q}")
-            rem = quote(f"Spider-{uname} SniSpoof")
+            rem = quote(f"PANAHANNET-{uname} SniSpoof")
             out.append(f"vless://{cfg_uuid}@{panel_domain}:443?{params}#{rem}")
 
     return out
@@ -2174,7 +2281,7 @@ def _worker_configs(user_id: str, user: dict, inbound: dict, stored_path: str, b
     for code, p in chosen:
         flag = _code_to_flag(code) if code else ""
         clabel = str(p.get("country") or (code.upper() if code else "Worker"))
-        rem = quote(f"Spider-{uname} {flag} {clabel}".strip() if flag else f"Spider-{uname} Worker")
+        rem = quote(f"PANAHANNET-{uname} {flag} {clabel}".strip() if flag else f"PANAHANNET-{uname} Worker")
         wpath = f"/route/{code}" if code else f"/{cfg_uuid}"
 
         params = {
@@ -2223,7 +2330,7 @@ async def ensure_default_link():
 # ── Basic endpoints ───────────────────────────────────────────────────────────
 @app.get("/")
 async def root():
-    return {"service": "Spider Gateway", "version": "9.2", "status": "active", "channel": "https://t.me/spider_vpn1"}
+    return {"service": f"{brand('panel_name', 'PANAHANNET')} Gateway", "version": "9.2", "status": "active", "channel": brand("channel_url")}
 
 # ── Subscription ping (must be before /sub/{{identifier}}) ──────────────────
 @app.get("/sub/{identifier}/ping")
@@ -2245,9 +2352,41 @@ async def sub_ping_handler(identifier: str):
 # ── Subscription (single link / user sub page) ──────────────────────────────
 @app.get("/sub/{identifier}")
 async def subscription_handler(identifier: str, request: Request):
-    """Smart handler: accepts UUID (config_uuid) → returns all user configs as base64.
-    Also accepts username → serves the HTML subscription page for admin preview."""
+    """Smart handler: accepts a secure hash (/sub/<hash>) or a UUID (config_uuid).
+    Hash → resolves to user / legacy link / sub-group and serves the matching
+    subscription. UUID → returns all configs for that user as base64.
+    A username → serves the HTML subscription page for admin preview."""
     import base64
+
+    # 0) Secure hash form → resolve to user / link / group.
+    _entry = SUB_HASH_INDEX.get(identifier)
+    if _entry:
+        _kind, _ident = _entry.get("kind"), str(_entry.get("id"))
+        if _kind == "group":
+            async with SUBS_LOCK:
+                _sub = SUBS.get(_ident)
+            if _sub:
+                return await _group_subscription_response(_sub, request)
+            raise HTTPException(status_code=404, detail="not found")
+        if _kind == "link":
+            async with LINKS_LOCK:
+                _link = LINKS.get(_ident)
+            if _link and is_link_allowed(_link):
+                host = SETTINGS.get("domain") or get_host()
+                proto = _link.get("protocol", DEFAULT_PROTOCOL)
+                vless = generate_vless_link(_ident, host, remark=f"{brand_prefix()}-{_link['label']}", protocol=proto)
+                content = base64.b64encode(vless.encode()).decode()
+                return Response(content=content, media_type="text/plain",
+                                headers={"profile-title": quote(_link["label"]),
+                                          "support-url": brand("support_url")})
+            raise HTTPException(status_code=404, detail="not found")
+        if _kind == "user":
+            async with USERS_LOCK:
+                _u = USERS.get(_ident)
+            if _u:
+                identifier = _u.get("config_uuid") or _ident
+            else:
+                raise HTTPException(status_code=404, detail="not found")
 
     # 1) UUID format → subscription for V2Box/clients: return ALL configs for the user
     if _is_valid_uuid(identifier):
@@ -2281,7 +2420,7 @@ async def subscription_handler(identifier: str, request: Request):
                             continue
                     if ib and _p == "worker":
                         if not target_user.get("worker_configs"):
-                            configs.extend(_worker_configs(target_uid, target_user, ib, stored_path_user, f"Spider-{username}"))
+                            configs.extend(_worker_configs(target_uid, target_user, ib, stored_path_user, f"PANAHANNET-{username}"))
                     else:
                         cfg = generate_user_config(target_uid, target_user, iid_)
                         if cfg:
@@ -2309,10 +2448,12 @@ async def subscription_handler(identifier: str, request: Request):
             all_configs = [status_config] + configs if status_config else configs
 
             content = base64.b64encode("\n".join(all_configs).encode()).decode()
+            _web_url = build_sub_url(host, "user", target_uid, target_user)
             return Response(content=content, media_type="text/plain",
                             headers={"profile-title": quote(username),
                                       "profile-update-interval": "12",
-                                      "support-url": "https://t.me/spider_vpn1"})
+                                      "profile-web-page-url": _web_url,
+                                      "support-url": brand("support_url")})
 
         # Fallback: check LINKS (legacy link UUID)
         async with LINKS_LOCK:
@@ -2320,10 +2461,10 @@ async def subscription_handler(identifier: str, request: Request):
         if link and is_link_allowed(link):
             host = SETTINGS.get("domain") or get_host()
             proto = link.get("protocol", DEFAULT_PROTOCOL)
-            vless = generate_vless_link(identifier, host, remark=f"Spider-{link['label']}", protocol=proto)
+            vless = generate_vless_link(identifier, host, remark=f"PANAHANNET-{link['label']}", protocol=proto)
             content = base64.b64encode(vless.encode()).decode()
             return Response(content=content, media_type="text/plain",
-                            headers={"profile-title": quote(link["label"]), "support-url": "https://t.me/spider_vpn1"})
+                            headers={"profile-title": quote(link["label"]), "support-url": "https://t.me/PenhanNetvpnbot"})
 
         raise HTTPException(status_code=404, detail="not found")
 
@@ -2341,7 +2482,7 @@ async def subscription_all(_=Depends(require_auth)):
     host = SETTINGS.get("domain") or get_host()
     async with LINKS_LOCK:
         lines = [
-            generate_vless_link(uid, host, remark=f"Spider-{d['label']}", protocol=d.get("protocol", DEFAULT_PROTOCOL))
+            generate_vless_link(uid, host, remark=f"PANAHANNET-{d['label']}", protocol=d.get("protocol", DEFAULT_PROTOCOL))
             for uid, d in LINKS.items()
             if is_link_allowed(d)
         ]
@@ -2376,7 +2517,7 @@ async def create_sub(request: Request, _=Depends(require_auth)):
         "sub_id": sub_id,
         **SUBS[sub_id],
         "public_url": f"https://{host}/p/{uuid_key}",
-        "sub_url": f"https://{host}/sub-group/{uuid_key}",
+        "sub_url": build_sub_url(host, "group", sub_id, SUBS[sub_id]),
     }
 
 @app.get("/api/subs")
@@ -2401,7 +2542,7 @@ async def list_subs(_=Depends(require_auth)):
             "total_used_bytes": total_used,
             "total_used_fmt": fmt_bytes(total_used),
             "public_url": f"https://{host}/p/{s['uuid_key']}",
-            "sub_url": f"https://{host}/sub-group/{s['uuid_key']}",
+            "sub_url": build_sub_url(host, "group", sid, s),
         })
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return {"subs": result}
@@ -2463,14 +2604,10 @@ async def assign_link_to_sub(sub_id: str, request: Request, _=Depends(require_au
     return {"ok": True}
 
 # ── Public sub-group subscription file ───────────────────────────────────────
-@app.get("/sub-group/{uuid_key}")
-async def sub_group_subscription(uuid_key: str, request: Request):
+async def _group_subscription_response(sub: dict, request: Request):
+    """Build the base64 subscription file for a sub-group (shared by
+    /sub/<hash> and the legacy /sub-group/<uuid_key> route)."""
     import base64
-    async with SUBS_LOCK:
-        sub = next((s for s in SUBS.values() if s.get("uuid_key") == uuid_key), None)
-    if not sub:
-        raise HTTPException(status_code=404, detail="not found")
-
     if sub.get("password_hash"):
         pw = request.query_params.get("pw", "")
         if hash_password(pw) != sub["password_hash"]:
@@ -2483,7 +2620,7 @@ async def sub_group_subscription(uuid_key: str, request: Request):
         for lid in link_ids:
             link = LINKS.get(lid)
             if link and is_link_allowed(link):
-                lines.append(generate_vless_link(lid, host, remark=f"Spider-{link['label']}", protocol=link.get("protocol", DEFAULT_PROTOCOL)))
+                lines.append(generate_vless_link(lid, host, remark=f"{brand_prefix()}-{link['label']}", protocol=link.get("protocol", DEFAULT_PROTOCOL)))
 
     content = base64.b64encode("\n".join(lines).encode()).decode()
     return Response(
@@ -2491,10 +2628,18 @@ async def sub_group_subscription(uuid_key: str, request: Request):
         media_type="text/plain",
         headers={
             "profile-title": quote(sub["name"]),
-            "support-url": "https://t.me/spider_vpn1",
+            "support-url": brand("support_url"),
             "profile-update-interval": "12",
-        }
-    )
+        })
+
+
+@app.get("/sub-group/{uuid_key}")
+async def sub_group_subscription(uuid_key: str, request: Request):
+    async with SUBS_LOCK:
+        sub = next((s for s in SUBS.values() if s.get("uuid_key") == uuid_key), None)
+    if not sub:
+        raise HTTPException(status_code=404, detail="not found")
+    return await _group_subscription_response(sub, request)
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
 @app.post("/api/login")
@@ -2713,8 +2858,8 @@ async def create_link(request: Request, _=Depends(require_auth)):
         "uuid": uid,
         **LINKS[uid],
         "expired": False,
-        "vless_link": generate_vless_link(uid, host, remark=f"Spider-{label}", protocol=protocol),
-        "sub_url": f"https://{host}/sub/{uid}",
+        "vless_link": generate_vless_link(uid, host, remark=f"{brand_prefix()}-{label}", protocol=protocol),
+        "sub_url": build_sub_url(host, "link", uid, LINKS[uid]),
     }
 
 @app.get("/api/links")
@@ -2730,8 +2875,8 @@ async def list_links(_=Depends(require_auth)):
             **d,
             "protocol": proto,
             "expired": is_link_expired(d),
-            "vless_link": generate_vless_link(uid, host, remark=f"Spider-{d['label']}", protocol=proto),
-            "sub_url": f"https://{host}/sub/{uid}",
+            "vless_link": generate_vless_link(uid, host, remark=f"{brand_prefix()}-{d['label']}", protocol=proto),
+            "sub_url": build_sub_url(host, "link", uid, d),
         })
     result.sort(key=lambda x: x["created_at"], reverse=True)
     return {"links": result}
@@ -2864,7 +3009,7 @@ async def _tunnel_relay(ws: WebSocket, uuid: str, worker_domain: str):
     worker_ws = None
     try:
         wss_url = f"wss://{worker_domain}/{uuid}"
-        headers = {"User-Agent": "Spider-Tunnel"}
+        headers = {"User-Agent": "PANAHANNET-Tunnel"}
         worker_ws = await asyncio.wait_for(
             _websockets.connect(wss_url, extra_headers=headers, max_size=None), timeout=10.0)
 
@@ -3313,16 +3458,19 @@ async def list_users(_=Depends(require_auth)):
             "inbound_name": INBOUNDS.get(u.get("inbound_id", ""), {}).get("name", "") if u.get("inbound_id") else "",
             "config_url": f"https://{host}/api/users/{uid}/config",
             "qr_url": f"https://{host}/api/users/{uid}/qr",
-            "subscription_url": f"https://{host}/api/users/{uid}/subscription",
+            "subscription_url": build_sub_url(host, "user", uid, u),
+            "sub_hash": sub_hash_for("user", uid, u),
             "connections": sum(1 for c in connections.values() if c.get("uuid") == u.get("config_uuid")),
         })
     result.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return {"users": result}
 
-@app.post("/api/users")
-async def create_user(request: Request, _=Depends(require_auth)):
-    """Create a new user with protocol config, traffic limit, and expiry."""
-    body = await request.json()
+async def create_user_core(body: dict) -> dict:
+    """Create a new user with protocol config, traffic limit, and expiry.
+
+    Core implementation shared by the HTTP endpoint (`POST /api/users`) and the
+    Telegram bot, so provisioning logic stays in one place.
+    """
     username = (body.get("username") or "user").strip()[:40]
     password = str(body.get("password") or secrets.token_urlsafe(12))
     traffic_limit_gb = float(body.get("traffic_limit_gb") or 0)
@@ -3555,15 +3703,24 @@ async def create_user(request: Request, _=Depends(require_auth)):
                 asyncio.create_task(_restart_telegram_proxy(_tg_iid))
     host = SETTINGS.get("domain") or get_host()
     asyncio.create_task(_xray_apply())  # refresh Xray clients after user change
+    _u = USERS[user_id]
     return {
         "user_id": user_id,
-        **USERS[user_id],
+        **_u,
         "password_hash": None,
         "config_url": f"https://{host}/api/users/{user_id}/config",
         "qr_url": f"https://{host}/api/users/{user_id}/qr",
-        "subscription_url": f"https://{host}/api/users/{user_id}/subscription",
-        "config": generate_user_config(user_id, USERS[user_id], inbound_id),
+        "subscription_url": build_sub_url(host, "user", user_id, _u),
+        "sub_hash": _u.get("sub_hash", ""),
+        "config": generate_user_config(user_id, _u, inbound_id),
     }
+
+
+@app.post("/api/users")
+async def create_user(request: Request, _=Depends(require_auth)):
+    """Create a new user with protocol config, traffic limit, and expiry."""
+    body = await request.json()
+    return await create_user_core(body)
 
 @app.patch("/api/users/{user_id}/toggle")
 async def toggle_user(user_id: str, _=Depends(require_auth)):
@@ -3748,7 +3905,8 @@ async def get_single_user(user_id: str, _=Depends(require_auth)):
         "config": generate_user_config(user_id, user, user.get("inbound_id")),
         "config_url": f"https://{host}/api/users/{user_id}/config",
         "qr_url": f"https://{host}/api/users/{user_id}/qr",
-        "subscription_url": f"https://{host}/api/users/{user_id}/subscription",
+        "subscription_url": build_sub_url(host, "user", user_id, user),
+        "sub_hash": sub_hash_for("user", user_id, user),
         "traffic_used_fmt": fmt_bytes(user.get("traffic_used_bytes", 0)),
         "traffic_limit_fmt": "∞" if user.get("traffic_limit_bytes", 0) == 0 else fmt_bytes(user.get("traffic_limit_bytes", 0)),
     }
@@ -3835,7 +3993,8 @@ async def get_user_config(user_id: str, _=Depends(require_auth)):
         "config": config,
         "config_url": f"https://{host}/api/users/{user_id}/config",
         "qr_url": f"https://{host}/api/users/{user_id}/qr",
-        "subscription_url": f"https://{host}/api/users/{user_id}/subscription",
+        "subscription_url": build_sub_url(host, "user", user_id, u),
+        "sub_hash": sub_hash_for("user", user_id, u),
     }
 
 @app.get("/api/users/{user_id}/qr")
@@ -3855,10 +4014,10 @@ async def get_user_qr(user_id: str, _=Depends(require_auth)):
         raise HTTPException(status_code=404, detail="user has no config_uuid")
 
     host = SETTINGS.get("domain") or get_host()
-    sub_url = f"https://{host}/sub/{config_uuid}"
+    sub_url_val = build_sub_url(host, "user", user_id, u)
 
     qr = qrcode.QRCode(version=1, box_size=10, border=4, error_correction=qrcode.constants.ERROR_CORRECT_M)
-    qr.add_data(sub_url)
+    qr.add_data(sub_url_val)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
@@ -3883,12 +4042,14 @@ async def get_user_subscription(user_id: str, _=Depends(require_auth)):
 
     config = generate_user_config(user_id, u, u.get("inbound_id"))
     content = base64.b64encode(config.encode()).decode()
+    _sub_hash = sub_hash_for("user", user_id, u)
 
     return {
         "user_id": user_id,
         "username": username,
         "subscription_uuid": sub_uuid,
-        "subscription_url": f"https://{host}/sub/{sub_uuid}",
+        "sub_hash": _sub_hash,
+        "subscription_url": f"https://{host}{BRAND.get('sub_prefix', '/sub')}/{_sub_hash}",
         "encoded_config": content,
     }
 
@@ -3942,8 +4103,8 @@ async def public_sub_data(uuid_key: str, request: Request):
             "limit_bytes": link.get("limit_bytes", 0),
             "limit_fmt": "∞" if link.get("limit_bytes", 0) == 0 else fmt_bytes(link["limit_bytes"]),
             "expires_at": link.get("expires_at"),
-            "vless_link": generate_vless_link(lid, host, remark=f"Spider-{link['label']}", protocol=proto),
-            "sub_url": f"https://{host}/sub/{lid}",
+            "vless_link": generate_vless_link(lid, host, remark=f"{brand_prefix()}-{link['label']}", protocol=proto),
+            "sub_url": build_sub_url(host, "link", lid, link),
             "connections": conn_count,
         })
 
@@ -3952,7 +4113,7 @@ async def public_sub_data(uuid_key: str, request: Request):
         "locked": False,
         "name": sub["name"],
         "desc": sub.get("desc", ""),
-        "sub_url": f"https://{host}/sub-group/{uuid_key}",
+        "sub_url": build_sub_url(host, "group", sub_id, sub),
         "active_connections": active_conns,
         "total_used_fmt": fmt_bytes(total_used),
         "links": links_out,
@@ -3970,23 +4131,34 @@ app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     if await is_valid_session(request.cookies.get(SESSION_COOKIE)):
-        return RedirectResponse(url="/spider")
-    return FileResponse(_os.path.join(_STATIC_DIR, "login.html"))
+        return RedirectResponse(url=PANEL_PATH)
+    return await _serve_branded_html("login.html")
 
+# Legacy/alternate entry points → configured panel path.
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_redirect(request: Request):
-    return RedirectResponse(url="/spider")
+    return RedirectResponse(url=PANEL_PATH)
 
-@app.get("/spider", response_class=HTMLResponse)
-async def spider_panel(request: Request):
+if PANEL_PATH != "/spider":
+    @app.get("/spider", response_class=HTMLResponse)
+    async def spider_legacy_redirect(request: Request):
+        return RedirectResponse(url=PANEL_PATH)
+
+    @app.get("/spider/{rest:path}", response_class=HTMLResponse)
+    async def spider_legacy_redirect_sub(rest: str, request: Request):
+        return RedirectResponse(url=PANEL_PATH)
+
+
+@app.get(PANEL_PATH, response_class=HTMLResponse)
+async def panel_page(request: Request):
     if not await is_valid_session(request.cookies.get(SESSION_COOKIE)):
         return RedirectResponse(url="/login")
     await ensure_default_link()
-    return FileResponse(_os.path.join(_STATIC_DIR, "index.html"))
+    return await _serve_branded_html("index.html")
 
 @app.get("/test-ws", response_class=HTMLResponse)
 async def test_ws_redirect():
-    return HTMLResponse(content="<script>location.href='/spider'</script>")
+    return HTMLResponse(content=f"<script>location.href='{PANEL_PATH}'</script>")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -4066,7 +4238,7 @@ async def api_user_sub(username: str):
                     if not str(ib.get("external_domain") or "").strip() or not str(ib.get("external_port") or "").strip():
                         continue
                 if ib and _p == "worker":
-                    configs.extend(_worker_configs(uid_, user, ib, stored_path_user, f"Spider-{user.get('username', uid_)}"))
+                    configs.extend(_worker_configs(uid_, user, ib, stored_path_user, f"PANAHANNET-{user.get('username', uid_)}"))
                 else:
                     configs.append(generate_user_config(uid_, user, iid_))
             except Exception:
@@ -4157,6 +4329,8 @@ async def api_user_sub(username: str):
         "proxy_ip_enabled": user.get("proxy_ip_enabled", False),
         "max_ip_per_user": int(user.get("concurrent_connections", SETTINGS.get("max_ip_per_user", 3) or 3)),
         "used_ips": len(USER_IP_MAP.get(user.get("user_id", ""), set())),
+        "sub_hash": sub_hash_for("user", user.get("user_id", ""), user),
+        "sub_url": build_sub_url(SETTINGS.get("domain") or get_host(), "user", user.get("user_id", ""), user),
     }
 
 
@@ -4194,7 +4368,7 @@ async def sub_qr(username: str, cfg: str = ""):
             for iid_ in (user.get("inbound_ids") or []):
                 ib = INBOUNDS.get(iid_)
                 if ib and (ib.get("protocol") or "").lower() == "worker":
-                    configs.extend(_worker_configs(uid, user, ib, "", f"Spider-{username}"))
+                    configs.extend(_worker_configs(uid, user, ib, "", f"PANAHANNET-{username}"))
         if not configs:
             single = generate_user_config(uid, user, user.get("inbound_id"))
             if single:
@@ -4208,7 +4382,7 @@ async def sub_qr(username: str, cfg: str = ""):
         qr_data = configs[idx] if configs and idx < len(configs) else (configs[0] if configs else "")
     if not qr_data:
         host = SETTINGS.get("domain") or get_host()
-        qr_data = f"https://{host}/sub/{config_uuid}"
+        qr_data = build_sub_url(host, "user", uid, user)
 
     qr = qrcode.QRCode(version=1, box_size=8, border=3,
                        error_correction=qrcode.constants.ERROR_CORRECT_M)
@@ -4379,6 +4553,14 @@ async def update_settings(request: Request, _=Depends(require_auth)):
         "auto_ip_rotation",
     }
     async with SETTINGS_LOCK:
+        # Branding + panel path (safe, non-destructive).
+        if isinstance(body.get("brand"), dict):
+            b = SETTINGS.setdefault("brand", {})
+            for k in EDITABLE_BRAND_KEYS:
+                if k in body["brand"] and body["brand"][k] is not None:
+                    b[k] = str(body["brand"][k]).strip()
+        if body.get("panel_path"):
+            SETTINGS["panel_path"] = normalize_panel_path(str(body["panel_path"]))
         for k, v in body.items():
             if k in allowed_keys:
                 if k == "max_ip_per_user" and isinstance(v, (int, float)):
@@ -4521,7 +4703,7 @@ async def settings_restore(request: Request, _=Depends(require_auth)):
 # Railway builds a Docker image from the repo at deploy time; the running
 # container has no git history, so "Update" re-clones the upstream repo over
 # /app. The new code goes live when the container restarts/redeploys.
-PANEL_REPO_URL = "https://github.com/amirh00sain/SpiderPanel"
+PANEL_REPO_URL = "https://t.me/PenhanNetvpnbot"
 APP_DIR = Path(os.path.dirname(os.path.abspath(__file__)))
 UPDATE_STATE: dict = {"running": False, "log": [], "done": False, "ok": None}
 UPDATE_LOCK = asyncio.Lock()
@@ -6376,7 +6558,7 @@ async def _cf_api(method: str, path: str, token: str, payload: dict = None, emai
     """
     token = str(token or "").strip()
     email = str(email or "").strip()
-    headers = {"Content-Type": "application/json", "User-Agent": "Spider-Panel"}
+    headers = {"Content-Type": "application/json", "User-Agent": "PANAHANNET-Panel"}
     # Cloudflare Global API Key (cfk_/cf_ prefix or 37-char hex) → Global Key
     # auth (X-Auth-Email + X-Auth-Key). Modern Bearer tokens → Authorization.
     # Only a real GAK is sent via X-Auth-Key; a Bearer token always uses Bearer
@@ -6625,7 +6807,7 @@ async def _worker_deploy() -> tuple:
             "compatibility_date": "2025-01-01",
             "bindings": bindings,
         })
-        boundary = "----SpiderPanel" + secrets.token_hex(8)
+        boundary = "----PANAHANNETPanel" + secrets.token_hex(8)
         body = (
             f"--{boundary}\r\n"
             'Content-Disposition: form-data; name="metadata"\r\n'

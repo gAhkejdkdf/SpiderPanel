@@ -1,4 +1,4 @@
-// Spider Panel — VLESS Worker (ESM Module)
+// PANAHANNET Panel — VLESS Worker (ESM Module)
 // ══════════════════════════════════════════════════════════════════════════════
 // Deployed by the panel to Cloudflare Workers. Serves VLESS/WS/TLS configs with
 // country-based routing and manages users (UUID → traffic/expiry) in KV.
@@ -329,7 +329,7 @@ export default {
 
     // ── Health / Debug ──
     if (path === '/health' || path === '/') {
-      return new Response('Spider VLESS Worker online', { headers: { 'content-type': 'text/plain' } });
+      return new Response('PANAHANNET VLESS Worker online', { headers: { 'content-type': 'text/plain' } });
     }
     if (path === '/debug-socket') {
       const info = { global_connect: typeof connect === 'function' };

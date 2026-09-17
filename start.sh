@@ -2,25 +2,25 @@
 set -Eeuo pipefail
 
 # ============================================================
-# SpiderPanel Universal Installer / Manager
+# PANAHANNET Panel Universal Installer / Manager
 # ============================================================
 
-APP_DIR="${SPIDER_APP_DIR:-/opt/SpiderPanel}"
+APP_DIR="${SPIDER_APP_DIR:-/opt/PANAHANNET}"
 REPO="${SPIDER_REPO:-https://github.com/amirh00sain/SpiderPanel.git}"
 BRANCH="${SPIDER_BRANCH:-main}"
 
 INSTALLER_URL="${SPIDER_INSTALLER_URL:-https://raw.githubusercontent.com/amirh00sain/SpiderPanel/main/start.sh}"
 
-ENV_FILE="/etc/spider-panel.env"
+ENV_FILE="/etc/panel-panel.env"
 SERVICE="spider-panel"
 
 PORT="8080"
 
 VENV="$APP_DIR/.venv"
-PIDFILE="$APP_DIR/spiderpanel.pid"
-LOGFILE="$APP_DIR/spiderpanel.log"
+PIDFILE="$APP_DIR/panelpanel.pid"
+LOGFILE="$APP_DIR/panelpanel.log"
 
-CLI="/usr/local/bin/spiderpanel"
+CLI="/usr/local/bin/panelpanel"
 
 XRAY="$APP_DIR/xray/xray"
 MTPROXY="/usr/local/bin/mtproto-proxy"
@@ -47,7 +47,7 @@ IS_CODESPACE=0
 # ============================================================
 
 log() {
-    printf '[SpiderPanel] %s\n' "$*"
+    printf '[PANAHANNET Panel] %s\n' "$*"
 }
 
 ok() {
@@ -92,7 +92,7 @@ root() {
 
     local f
 
-    f="$(mktemp /tmp/spiderpanel-root.XXXXXX)"
+    f="$(mktemp /tmp/panelpanel-root.XXXXXX)"
 
     curl -fsSL \
         --retry 5 \
@@ -385,9 +385,9 @@ packages() {
 
 download_repo() {
 
-    TMP_ROOT="$(mktemp -d /tmp/spiderpanel.XXXXXX)"
+    TMP_ROOT="$(mktemp -d /tmp/panelpanel.XXXXXX)"
 
-    log "Downloading SpiderPanel..."
+    log "Downloading PANAHANNET Panel..."
 
     git clone \
         --depth 1 \
@@ -607,7 +607,7 @@ install_uv() {
     log "Downloading official uv binary..."
 
 
-    tmp="$(mktemp -d /tmp/spiderpanel-uv.XXXXXX)"
+    tmp="$(mktemp -d /tmp/panelpanel-uv.XXXXXX)"
 
     archive_path="$tmp/$archive"
 
@@ -953,11 +953,11 @@ EOF
 
 
     cat > "$APP_DIR/INSTALL-CREDENTIALS.txt" <<EOF
-SpiderPanel
+PANAHANNET Panel
 ===========
 
 URL:
-http://127.0.0.1:8080/spider
+http://127.0.0.1:8080/panel
 
 Port:
 8080
@@ -1210,7 +1210,7 @@ create_service() {
 
     cat > "/etc/systemd/system/$SERVICE.service" <<EOF
 [Unit]
-Description=SpiderPanel
+Description=PANAHANNET Panel
 After=network-online.target
 Wants=network-online.target
 
@@ -1296,7 +1296,7 @@ start_panel() {
 
         if running; then
 
-            ok "SpiderPanel already running."
+            ok "PANAHANNET Panel already running."
 
             return 0
         fi
@@ -1325,13 +1325,13 @@ start_panel() {
 
     if running; then
 
-        ok "SpiderPanel is running."
+        ok "PANAHANNET Panel is running."
 
         return 0
     fi
 
 
-    printf '[ERROR] SpiderPanel failed to start.\n' >&2
+    printf '[ERROR] PANAHANNET Panel failed to start.\n' >&2
 
 
     if systemd_ok; then
@@ -1401,7 +1401,7 @@ stop_panel() {
     fi
 
 
-    ok "SpiderPanel stopped."
+    ok "PANAHANNET Panel stopped."
 }
 
 
@@ -1413,7 +1413,7 @@ status_panel() {
 
     echo
 
-    echo "SpiderPanel status"
+    echo "PANAHANNET Panel status"
     echo "------------------"
 
     echo "OS: $OS_NAME"
@@ -1532,23 +1532,23 @@ info_panel() {
     echo
 
     echo "================================================"
-    echo "                 SPIDERPANEL"
+    echo "                 PANAHANNET PANEL"
     echo "================================================"
 
 
-    echo "URL: http://127.0.0.1:8080/spider"
+    echo "URL: http://127.0.0.1:8080/panel"
 
 
     if [[ -n "$local_ip" ]]; then
 
-        echo "Local URL: http://${local_ip}:8080/spider"
+        echo "Local URL: http://${local_ip}:8080/panel"
 
     fi
 
 
     if [[ -n "$ip" ]]; then
 
-        echo "Public URL: http://${ip}:8080/spider"
+        echo "Public URL: http://${ip}:8080/panel"
 
     fi
 
@@ -1559,7 +1559,7 @@ info_panel() {
 
         local domain="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
 
-        echo "Codespace URL: https://${CODESPACE_NAME}-8080.${domain}/spider"
+        echo "Codespace URL: https://${CODESPACE_NAME}-8080.${domain}/panel"
 
         echo "Forward port 8080 in Codespaces."
 
@@ -1635,7 +1635,7 @@ update_panel() {
 
     local f=""
 
-    f="$(mktemp /tmp/spiderpanel-update.XXXXXX)"
+    f="$(mktemp /tmp/panelpanel-update.XXXXXX)"
 
 
     curl \
@@ -1665,7 +1665,7 @@ uninstall_panel() {
 
     echo
 
-    echo "This will remove SpiderPanel."
+    echo "This will remove PANAHANNET Panel."
 
     echo
 
@@ -1713,7 +1713,7 @@ uninstall_panel() {
     rm -rf "$APP_DIR"
 
 
-    ok "SpiderPanel removed."
+    ok "PANAHANNET Panel removed."
 }
 
 
@@ -1728,10 +1728,10 @@ create_cli() {
 
 set -e
 
-APP="/opt/SpiderPanel"
+APP="/opt/PANAHANNET"
 
 if [[ ! -f "$APP/start.sh" ]]; then
-    echo "SpiderPanel is not installed."
+    echo "PANAHANNET Panel is not installed."
     exit 1
 fi
 
@@ -1775,7 +1775,7 @@ case "${1:-menu}" in
 
     *)
         echo
-        echo "SpiderPanel"
+        echo "PANAHANNET Panel"
         echo
         echo "1) Info"
         echo "2) Status"
@@ -1859,7 +1859,7 @@ install_panel() {
 
     echo
 
-    log "Installing SpiderPanel..."
+    log "Installing PANAHANNET Panel..."
 
     log "OS: $OS_NAME"
 
@@ -2018,7 +2018,7 @@ main() {
         *)
 
             echo
-            echo "SpiderPanel Universal Installer"
+            echo "PANAHANNET Panel Universal Installer"
             echo
             echo "Usage:"
             echo

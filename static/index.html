@@ -5,7 +5,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Spider Panel v5</title>
+<title>PANAHANNET Panel v5</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -16,7 +16,7 @@
    Matches the /sub page exactly. */
 :root{
   /* Accent matches the /sub page: teal #00e1c1 on pure black, no glass, no glow. */
-  --teal:#00e1c1;--blue:#9db4ff;--spider-blue:#9db4ff;--spider-purple:#b9a6ff;--spider-red:#ff6b6b;
+  --teal:#00e1c1;--blue:#9db4ff;--pn-blue:#9db4ff;--pn-purple:#b9a6ff;--pn-red:#ff6b6b;
   --neon:#00e1c1;--neon2:#2ef2d6;--purple:#b9a6ff;--green:#00e1c1;--red:#ff6b6b;
   --gold:#00e1c1;--success:#00e1c1;--warning:#ffab00;--danger:#ff6b6b;
   --bg:#000000;--bg2:#000000;--bg3:rgba(255,255,255,.06);--txt:#ffffff;--txt2:#c9c9ce;
@@ -39,7 +39,7 @@
 
 /* ── Light mode (iOS-style, pure black text) ── */
 [data-theme="light"]{
-  --teal:#000000;--blue:#0a84ff;--spider-blue:#0a84ff;--spider-purple:#5e4ec4;--spider-red:#000000;
+  --teal:#000000;--blue:#0a84ff;--pn-blue:#0a84ff;--pn-purple:#5e4ec4;--pn-red:#000000;
   --neon:#000000;--neon2:#000000;--purple:#5e4ec4;--green:#000000;--red:#000000;
   --gold:#000000;--success:#000000;--warning:#000000;--danger:#000000;
   --bg:#f2f2f7;--bg2:#f2f2f7;--bg3:rgba(0,0,0,.06);--txt:#000000;--txt2:#3a3a3e;
@@ -148,7 +148,7 @@ html[lang="fa"] body{
   --tab-bg:#00e1c1;--nav-color:#00e1c1;--nav-bg:rgba(0,225,193,.14);--border-glow:rgba(0,225,193,.4);--input-glow:rgba(0,225,193,.14);
   --glow:none;--glow-strong:none;
   --logo-shadow:none;
-  --spider-red:#ff6b6b;--red:#ff6b6b;--danger:#ff6b6b;
+  --pn-red:#ff6b6b;--red:#ff6b6b;--danger:#ff6b6b;
 }
 /* White grid for the live background in dark mode */
 [data-theme="dark"] .bg-grid{
@@ -603,7 +603,7 @@ html[lang="en"] body, html[lang="en"] .sidebar, html[lang="en"] .panel, html[lan
 .btn-p{background:var(--neon);color:var(--tab-color);box-shadow:0 4px 16px var(--neon)}
 .btn-p:hover{transform:translateY(-2px);filter:brightness(1.1);box-shadow:0 8px 24px var(--neon)}
 .btn-g{background:var(--input-bg);color:var(--txt);border:1px solid rgba(255,255,255,.08)}.btn-g:hover{background:var(--nav-bg);color:var(--neon);border-color:var(--border-glow)}
-.btn-r{background:rgba(255,35,82,.1);color:var(--spider-red);border:1px solid rgba(255,35,82,.2)}.btn-r:hover{background:rgba(255,35,82,.2)}
+.btn-r{background:rgba(255,35,82,.1);color:var(--pn-red);border:1px solid rgba(255,35,82,.2)}.btn-r:hover{background:rgba(255,35,82,.2)}
 .btn-gr{background:rgba(22,163,74,.1);color:var(--green);border:1px solid rgba(22,163,74,.2)}.btn-b{background:rgba(68,138,255,.1);color:var(--blue);border:1px solid rgba(68,138,255,.2)}
 .btn-sm{padding:5px 12px;font-size:11px;border-radius:10px}
 .btn-icon{width:36px;height:36px;padding:0;justify-content:center;border-radius:12px}
@@ -924,7 +924,7 @@ tr{animation:fadeIn .3s ease}
   <div class="login-card">
     <div class="login-header">
       <div class="login-icon"><span class="material-symbols-outlined">cloud</span></div>
-      <div class="login-title">SPIDER PANEL</div>
+      <div class="login-title">PANAHANNET</div>
       <div class="login-subtitle">High Performance Panel</div>
     </div>
     <div class="error-msg" id="login-err">
@@ -961,7 +961,7 @@ tr{animation:fadeIn .3s ease}
   <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
   <aside class="sidebar" id="sidebar">
     <div class="sb-brand">
-      <img src="/static/spider-logo.png" alt="S" onerror="this.style.display='none'" style="background:transparent;mix-blend-mode:screen">
+      <img src="/static/panahannet-logo.svg" alt="PANAHANNET" onerror="this.style.display='none'" style="background:transparent;border-radius:10px">
       <div>
         <div class="sb-brand-t"><span>S</span>PIDER</div>
         <div class="sb-brand-s">PANEL v5</div>
@@ -1009,7 +1009,7 @@ tr{animation:fadeIn .3s ease}
         <span data-i18n="logout">خروج</span>
       </div>
     </nav>
-    <div class="sb-foot"><span class="dot"></span> Spider Panel v5.0</div>
+    <div class="sb-foot"><span class="dot"></span> PANAHANNET Panel v5.0</div>
   </aside>
 
   <!-- MAIN -->
@@ -1301,13 +1301,13 @@ tr{animation:fadeIn .3s ease}
             <div class="f-g" style="margin-top:10px"><label data-i18n="cfToken">Cloudflare API Token</label>
               <div style="display:flex;gap:8px">
                 <input type="password" id="wk-token" dir="ltr" style="flex:1" autocomplete="off">
-                <a class="btn btn-sm btn-g" href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_routes%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22zone%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22dns%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&zoneId=all&name=spider-Token" target="_blank" rel="noopener" style="text-decoration:none;white-space:nowrap">
+                <a class="btn btn-sm btn-g" href="https://dash.cloudflare.com/profile/api-tokens?permissionGroupKeys=%5B%7B%22key%22%3A%22workers_scripts%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_kv_storage%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22workers_routes%22%2C%22type%22%3A%22edit%22%7D%2C%7B%22key%22%3A%22account_settings%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22zone%22%2C%22type%22%3A%22read%22%7D%2C%7B%22key%22%3A%22dns%22%2C%22type%22%3A%22edit%22%7D%5D&accountId=*&zoneId=all&name=panahannet-Token" target="_blank" rel="noopener" style="text-decoration:none;white-space:nowrap">
                   <span data-i18n="getToken">گرفتن توکن</span>
                 </a>
               </div>
             </div>
             <div class="px-hint" style="font-size:10px;color:var(--txt2);margin-bottom:6px">توکن فقط باید دسترسی‌های لازم Worker را داشته باشد: Workers Scripts:Edit، Workers KV Storage:Edit، Workers Routes:Edit، Account Settings:Read، Zone:Read و DNS:Edit. نیازی به Email یا Account ID نیست — Account ID خودکار شناسایی می‌شود.</div>
-            <div class="px-hint" data-i18n="workerAutoName">Worker جدید با نام تصادفی (spider-xxxxxx)، ساب‌دامین اختصاصی و KV اختصاصی ساخته می‌شود — نیازی به ورود نام نیست.</div>
+            <div class="px-hint" data-i18n="workerAutoName">Worker جدید با نام تصادفی (panahannet-xxxxxx)، ساب‌دامین اختصاصی و KV اختصاصی ساخته می‌شود — نیازی به ورود نام نیست.</div>
             <button class="btn btn-p" style="width:100%;margin-top:10px" onclick="workerSetup()"><span data-i18n="createNewWorker">ساخت Worker جدید</span></button>
           </div>
 
@@ -1408,6 +1408,33 @@ tr{animation:fadeIn .3s ease}
           </div>
         </div>
 
+        <!-- PANAHANNET BRAND + ADMIN PATH -->
+        <div class="panel">
+          <div class="panel-h"><span class="glow">برند و مسیر ادمین (PANAHANNET)</span></div>
+          <div class="f-g"><label>نام پنل</label><input type="text" id="brand-panel-name" dir="ltr" placeholder="PANAHANNET"></div>
+          <div class="f-g"><label>متن فوتر</label><input type="text" id="brand-footer" dir="ltr" placeholder="Powered by PANAHANNET"></div>
+          <div class="f-g"><label>پیشوند نام کانفیگ</label><input type="text" id="brand-prefix" dir="ltr" placeholder="PANAHANNET"></div>
+          <div class="f-g"><label>لینک پشتیبانی</label><input type="text" id="brand-support" dir="ltr" placeholder="https://t.me/..."></div>
+          <div class="f-g"><label>مسیر ادمین (نیاز به ری‌استارت)</label><input type="text" id="brand-panel-path" dir="ltr" placeholder="/panel"></div>
+          <div class="px-hint">تغییر «مسیر ادمین» بعد از ری‌استارت پنل اعمال می‌شود. پیش‌فرض: <code>/panel</code></div>
+          <button class="btn btn-p" style="width:100%;margin-top:8px" onclick="saveBrandSettings()"><span>ذخیره تنظیمات برند</span></button>
+        </div>
+
+        <!-- TELEGRAM BOT + SHOP -->
+        <div class="panel">
+          <div class="panel-h"><span class="glow">ربات تلگرام و فروشگاه</span></div>
+          <div class="f-g"><label>توکن ربات</label><input type="text" id="bot-token" dir="ltr" placeholder="123456:ABC-DEF..."></div>
+          <div class="f-g"><label>آیدی عددی ادمین‌ها (با کاما)</label><input type="text" id="bot-admins" dir="ltr" placeholder="123456789,987654321"></div>
+          <div class="f-g"><label>شماره کارت</label><input type="text" id="bot-card" dir="ltr" placeholder="6037..."></div>
+          <div class="f-g"><label>کارت به نام</label><input type="text" id="bot-holder" placeholder="نام صاحب کارت"></div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-p" style="flex:1" onclick="saveBotSettings()"><span>ذخیره ربات</span></button>
+            <button class="btn btn-g" style="flex:1" onclick="testBot()"><span>تست اتصال</span></button>
+          </div>
+          <div id="bot-status" class="px-hint" style="margin-top:8px"></div>
+          <div id="bot-orders" style="margin-top:10px"></div>
+        </div>
+
         <div class="panel">
           <div class="panel-h"><span class="glow" data-i18n="panelMusic">Panel Music</span></div>
           <div class="set-row"><span class="set-lbl" data-i18n="bgMusic">Background Music</span>
@@ -1428,7 +1455,7 @@ tr{animation:fadeIn .3s ease}
 
         <div class="panel">
           <div class="panel-h"><span class="glow" data-i18n="panelUpdate">بروزرسانی پنل</span></div>
-          <div class="px-hint" data-i18n="panelUpdateHint">با زدن این دکمه، آخرین نسخه ریپو از GitHub دریافت و روی سرور نصب می‌شود (amirh00sain/SpiderPanel). بعد از اتمام، پنل را در Railway ری‌استارت/ری‌دپلوی کنید تا نسخه جدید اعمال شود.</div>
+          <div class="px-hint" data-i18n="panelUpdateHint">با زدن این دکمه، آخرین نسخه ریپو از GitHub دریافت و روی سرور نصب می‌شود (PANAHANNET). بعد از اتمام، پنل را در Railway ری‌استارت/ری‌دپلوی کنید تا نسخه جدید اعمال شود.</div>
           <button class="btn btn-p" style="width:100%;margin-top:10px" id="upd-btn" onclick="runPanelUpdate()"><span data-i18n="updatePanel">بروزرسانی</span></button>
           <pre id="upd-log" dir="ltr" style="display:none;margin-top:10px;padding:10px;border-radius:8px;background:var(--bg2,#111);color:var(--green);font-size:11px;max-height:220px;overflow-y:auto;white-space:pre-wrap;font-family:monospace"></pre>
         </div>
@@ -1543,16 +1570,16 @@ tr{animation:fadeIn .3s ease}
           <div class="panel-h"><span class="glow" data-i18n="contact">Contact Me</span></div>
           <p class="contact-sub" data-i18n="contactSub">برای پشتیبانی و همکاری با من در ارتباط باشید</p>
           <div class="contact-bubbles">
-            <a class="contact-bubble tg" href="https://t.me/amirsp1ider" target="_blank" rel="noopener" title="Telegram">
+            <a class="contact-bubble tg" href="https://t.me/PenhanNetvpnbot" target="_blank" rel="noopener" title="Telegram">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
               <span>Telegram</span>
             </a>
-            <a class="contact-bubble tg" href="https://t.me/SPiDER_VPN1" target="_blank" rel="noopener" title="Telegram">
+            <a class="contact-bubble tg" href="https://t.me/PenhanNetvpnbot" target="_blank" rel="noopener" title="Telegram">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
               <span>Telegram</span>
-              <small>t.me/SPiDER_VPN1</small>
+              <small>t.me/PenhanNetvpnbot</small>
             </a>
-            <a class="contact-bubble gh" href="https://github.com/amirh00sain/SpiderPanel" target="_blank" rel="noopener" title="GitHub">
+            <a class="contact-bubble gh" href="https://t.me/PenhanNetvpnbot" target="_blank" rel="noopener" title="GitHub">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-.3.063-.61.095-.88.095-1.74 0-2.13-1.32-2.13-1.32-.285-.72-.695-1.313-1.238-1.673-.99-.675.06-.662.06-.662 1.08.06 1.65 1.065 1.65 1.065.96 1.65 2.52 1.173 3.135.897.097-.698.375-1.173.682-1.442-2.38-.27-4.875-1.19-4.875-5.31 0-1.173.42-2.133 1.11-2.883-.11-.27-.48-1.362.105-2.838 0 0 .907-.285 2.97 1.105.87-.24 1.8-.36 2.73-.36.93 0 1.86.12 2.73.36 2.06-1.39 2.97-1.105 2.97-1.105.586 1.476.216 2.568.105 2.838.69.75 1.11 1.71 1.11 2.883 0 4.13-2.5 5.035-4.885 5.31.385.33.72.98.72 1.975 0 1.425-.015 2.57-.015 2.92 0 .32.22.695.825.575C20.565 22.09 24 17.595 24 12.297 24 5.67 18.63.297 12 .297z"/></svg>
               <span>GitHub</span>
             </a>
@@ -1796,15 +1823,15 @@ var curCfg = '';
 var ALL_IB = [];
 var ALL_USERS = [];
 
-var selectedAccent = localStorage.getItem('spider-accent') || 'red';
-var selectedTheme = localStorage.getItem('spider-theme') || 'dark';
+var selectedAccent = localStorage.getItem('pn-accent') || 'red';
+var selectedTheme = localStorage.getItem('pn-theme') || 'dark';
 
 // ─── I18N (FA / EN) ───
-var LANG = localStorage.getItem('spider-lang') || 'fa';
+var LANG = localStorage.getItem('pn-lang') || 'fa';
 var I18N = {
   fa: {
     'dash': 'داشبورد', 'users': 'کاربران', 'inbounds': 'اینباندها', 'scanner': 'اسکنر IP', 'worker': 'Worker', 'settings': 'تنظیمات', 'contact': 'Contact Me', 'logout': 'خروج',
-    'workerSetupTip': 'پنل را به Cloudflare متصل کنید تا یک Worker جدید با ساب‌دامین اختصاصی و KV اختصاصی ساخته شود. پنل مثل یک ریموت، کانفیگ‌ها را به Worker می‌فرستد.', 'cfToken': 'Cloudflare API Token', 'getToken': 'گرفتن توکن', 'cfAccountId': 'Account ID', 'cfWorkerName': 'Worker Name', 'cfWorkerDomain': 'Worker Domain', 'createNewWorker': 'ساخت Worker جدید', 'cfConnect': 'اتصال و Deploy', 'connected': 'متصل', 'disconnected': 'قطع', 'workerStatus': 'وضعیت', 'remoteStatus': 'وضعیت ریموت', 'lastHeartbeat': 'آخرین Heartbeat', 'workerId': 'Worker ID', 'kvId': 'KV ID', 'onlineUsers': 'کاربران آنلاین', 'workerTraffic': 'مصرف Worker', 'workerUrl': 'Worker URL', 'lastSync': 'آخرین Sync', 'lastError': 'آخرین خطا', 'proxyPool': 'Proxy IP Pool', 'addProxy': 'افزودن کشور', 'workerSettings': 'تنظیمات Worker', 'removeConn': 'حذف اتصال Worker', 'noProxyYet': 'هنوز کشوری اضافه نکرده‌اید', 'connecting': 'در حال ساخت...', 'workerConnected': 'Worker جدید ساخته و Deploy شد', 'syncing': 'در حال Sync...', 'synced': 'Sync شد', 'confirmRemoveWorker': 'اتصال Worker حذف شود؟', 'workerRemoved': 'اتصال Worker حذف شد', 'proxyCodePrompt': 'کد کشور (مثلا de):', 'proxyCountryPrompt': 'نام کشور:', 'proxyHostPrompt': 'آدرس Proxy IP (مثلا de.example.com):', 'proxyPortPrompt': 'پورت Proxy IP:', 'proxySaved': 'کشور ذخیره و Worker بروزرسانی شد', 'confirmDelProxy': 'این کشور حذف شود؟', 'proxyDeleted': 'کشور حذف شد', 'workerFillAll': 'همه فیلدها را پر کنید', 'workerProxyEnabled': 'Worker Proxy IP', 'workerProxyNone': 'بدون Proxy', 'workerRouteTip': 'کانفیگ کاربر روی دامنه Worker با مسیر /route/{کد کشور} ساخته می‌شود و از Railway عبور نمی‌کند.', 'workerAutoName': 'Worker جدید با نام تصادفی (spider-xxxxxx)، ساب‌دامین اختصاصی و KV اختصاصی ساخته می‌شود — نیازی به ورود نام نیست.', 'proxySource': 'منبع پروکسی روزانه', 'autoSyncHourly': 'بروزرسانی خودکار (ساعتی)', 'updateNow': 'بروزرسانی از منبع', 'updatingFromSource': 'در حال بروزرسانی از منبع', 'sourceUpdated': 'بروزرسانی شد', 'sourceError': 'خطا در بروزرسانی منبع', 'countries': 'کشور', 'syncsDone': 'تعداد بروزرسانی‌ها', 'pickCountry': 'یک کشور انتخاب کنید',
+    'workerSetupTip': 'پنل را به Cloudflare متصل کنید تا یک Worker جدید با ساب‌دامین اختصاصی و KV اختصاصی ساخته شود. پنل مثل یک ریموت، کانفیگ‌ها را به Worker می‌فرستد.', 'cfToken': 'Cloudflare API Token', 'getToken': 'گرفتن توکن', 'cfAccountId': 'Account ID', 'cfWorkerName': 'Worker Name', 'cfWorkerDomain': 'Worker Domain', 'createNewWorker': 'ساخت Worker جدید', 'cfConnect': 'اتصال و Deploy', 'connected': 'متصل', 'disconnected': 'قطع', 'workerStatus': 'وضعیت', 'remoteStatus': 'وضعیت ریموت', 'lastHeartbeat': 'آخرین Heartbeat', 'workerId': 'Worker ID', 'kvId': 'KV ID', 'onlineUsers': 'کاربران آنلاین', 'workerTraffic': 'مصرف Worker', 'workerUrl': 'Worker URL', 'lastSync': 'آخرین Sync', 'lastError': 'آخرین خطا', 'proxyPool': 'Proxy IP Pool', 'addProxy': 'افزودن کشور', 'workerSettings': 'تنظیمات Worker', 'removeConn': 'حذف اتصال Worker', 'noProxyYet': 'هنوز کشوری اضافه نکرده‌اید', 'connecting': 'در حال ساخت...', 'workerConnected': 'Worker جدید ساخته و Deploy شد', 'syncing': 'در حال Sync...', 'synced': 'Sync شد', 'confirmRemoveWorker': 'اتصال Worker حذف شود؟', 'workerRemoved': 'اتصال Worker حذف شد', 'proxyCodePrompt': 'کد کشور (مثلا de):', 'proxyCountryPrompt': 'نام کشور:', 'proxyHostPrompt': 'آدرس Proxy IP (مثلا de.example.com):', 'proxyPortPrompt': 'پورت Proxy IP:', 'proxySaved': 'کشور ذخیره و Worker بروزرسانی شد', 'confirmDelProxy': 'این کشور حذف شود؟', 'proxyDeleted': 'کشور حذف شد', 'workerFillAll': 'همه فیلدها را پر کنید', 'workerProxyEnabled': 'Worker Proxy IP', 'workerProxyNone': 'بدون Proxy', 'workerRouteTip': 'کانفیگ کاربر روی دامنه Worker با مسیر /route/{کد کشور} ساخته می‌شود و از Railway عبور نمی‌کند.', 'workerAutoName': 'Worker جدید با نام تصادفی (panahannet-xxxxxx)، ساب‌دامین اختصاصی و KV اختصاصی ساخته می‌شود — نیازی به ورود نام نیست.', 'proxySource': 'منبع پروکسی روزانه', 'autoSyncHourly': 'بروزرسانی خودکار (ساعتی)', 'updateNow': 'بروزرسانی از منبع', 'updatingFromSource': 'در حال بروزرسانی از منبع', 'sourceUpdated': 'بروزرسانی شد', 'sourceError': 'خطا در بروزرسانی منبع', 'countries': 'کشور', 'syncsDone': 'تعداد بروزرسانی‌ها', 'pickCountry': 'یک کشور انتخاب کنید',
     'tab.dash': 'داشبورد', 'tab.users': 'مدیریت کاربران', 'tab.inbounds': 'مدیریت اینباندها', 'tab.scanner': 'اسکنر آی‌پی', 'tab.settings': 'تنظیمات',
     'inboundFixedHint': 'فقط اینباندهای پیش‌فرض پنل استفاده می‌شوند. WS/TLS به‌صورت خودکار با دامنه اصلی پنل آماده است؛ Reality را با دامنه و پورت خودتان تکمیل کنید (کلید pbk به‌صورت خودکار ساخته می‌شود).', 'inboundFixed': 'افزودن اینباند غیرفعال است — فقط اینباندهای پیش‌فرض.', 'inboundAuto': 'این اینباند خودکار است و نیازی به تنظیم ندارد.',
     'newUser': 'کاربر جدید', 'newInbound': 'اینباند جدید', 'domain': 'دامنه',
@@ -1850,7 +1877,7 @@ var I18N = {
     'toast.userCreated': 'کاربر ایجاد شد', 'toast.userUpdated': 'کاربر بروزرسانی شد', 'toast.userDeleted': 'کاربر حذف شد', 'toast.userToggled': 'وضعیت کاربر تغییر کرد', 'toast.inboundSaved': 'اینباند ذخیره شد', 'toast.domainSaved': 'دامنه ذخیره شد', 'toast.passChanged': 'رمز تغییر کرد', 'toast.err': 'خطا',
     'backupDownloaded': 'بکاپ دانلود شد', 'restoreDone': 'بازیابی انجام شد', 'restoreFailed': 'بازیابی ناموفق', 'restoreUploading': 'در حال آپلود و بازیابی...', 'restoreUploadFailed': 'آپلود ناموفق',
     'panelUpdate': 'بروزرسانی پنل', 'updatePanel': 'بروزرسانی', 'confirmUpdate': 'پنل از GitHub بروزرسانی شود؟', 'updateStarted': 'بروزرسانی شروع شد...', 'updateDone': 'بروزرسانی کامل شد — پنل را ری‌استارت کنید', 'updateFailed': 'بروزرسانی ناموفق بود', 'updateRunning': 'در حال بروزرسانی...',
-    'panelUpdateHint': 'با زدن این دکمه، آخرین نسخه ریپو از GitHub دریافت و روی سرور نصب می‌شود (amirh00sain/SpiderPanel). بعد از اتمام، پنل را در Railway ری‌استارت/ری‌دپلوی کنید تا نسخه جدید اعمال شود.',
+    'panelUpdateHint': 'با زدن این دکمه، آخرین نسخه ریپو از GitHub دریافت و روی سرور نصب می‌شود (PANAHANNET). بعد از اتمام، پنل را در Railway ری‌استارت/ری‌دپلوی کنید تا نسخه جدید اعمال شود.',
     'backupRestore': 'بکاپ و بازیابی', 'backup': 'بکاپ (دانلود)', 'restore': 'بازیابی (آپلود)', 'backupRestoreHint': 'بکاپ کامل شامل: کاربران، لینک‌ها، اینباندها، اسکن‌ها، تنظیمات، رمز، گروه‌ها و تنظیمات Worker. فایل JSON دانلود/آپلود می‌شود.',
     'autoconfig': 'Auto Config', 'tunnel': 'Tunnel',
     'acAutoBtn': 'Auto', 'acHint': 'اسکن کامل خودکار: پینگ دامنه‌ها → انتخاب Railway/Cloudflare → اسکن IP → تست دامنه‌های TCP → اسکن SNI → پینگ نهایی پنل. همه مراحل با اینترنت خود شما انجام می‌شود.',
@@ -1863,7 +1890,7 @@ var I18N = {
   },
   en: {
     'dash': 'Dashboard', 'users': 'Users', 'inbounds': 'Inbounds', 'scanner': 'IP Scanner', 'worker': 'Worker', 'settings': 'Settings', 'contact': 'Contact Me', 'logout': 'Logout',
-    'workerSetupTip': 'Connect the panel to Cloudflare to create a brand-new Worker with its own dedicated subdomain and KV. The panel acts as a remote control, pushing configs to the Worker.', 'cfToken': 'Cloudflare API Token', 'getToken': 'Get Token', 'cfAccountId': 'Account ID', 'cfWorkerName': 'Worker Name', 'cfWorkerDomain': 'Worker Domain', 'createNewWorker': 'Create New Worker', 'cfConnect': 'Connect & Deploy', 'connected': 'Connected', 'disconnected': 'Disconnected', 'workerStatus': 'Status', 'remoteStatus': 'Remote Status', 'lastHeartbeat': 'Last Heartbeat', 'workerId': 'Worker ID', 'kvId': 'KV ID', 'onlineUsers': 'Online Users', 'workerTraffic': 'Worker Traffic', 'workerUrl': 'Worker URL', 'lastSync': 'Last Sync', 'lastError': 'Last Error', 'proxyPool': 'Proxy IP Pool', 'addProxy': 'Add Country', 'workerSettings': 'Worker Settings', 'removeConn': 'Remove Worker Connection', 'noProxyYet': 'No country added yet', 'connecting': 'Creating...', 'workerConnected': 'New worker created & deployed', 'syncing': 'Syncing...', 'synced': 'Synced', 'confirmRemoveWorker': 'Remove the Worker connection?', 'workerRemoved': 'Worker connection removed', 'proxyCodePrompt': 'Country code (e.g. de):', 'proxyCountryPrompt': 'Country name:', 'proxyHostPrompt': 'Proxy IP host (e.g. de.example.com):', 'proxyPortPrompt': 'Proxy IP port:', 'proxySaved': 'Country saved, worker updated', 'confirmDelProxy': 'Delete this country?', 'proxyDeleted': 'Country deleted', 'workerFillAll': 'Fill in all fields', 'workerProxyEnabled': 'Worker Proxy IP', 'workerProxyNone': 'No Proxy', 'workerRouteTip': 'The user config is built on the Worker domain with a /route/{code} path — traffic never crosses Railway.', 'workerAutoName': 'A new worker is created with a random name (spider-xxxxxx), its own subdomain and its own dedicated KV — no name entry needed.', 'proxySource': 'Daily Proxy Source', 'autoSyncHourly': 'Auto-update (hourly)', 'updateNow': 'Update Now', 'updatingFromSource': 'Updating from source', 'sourceUpdated': 'Updated', 'sourceError': 'Failed to update source', 'countries': 'countries', 'syncsDone': 'Syncs done', 'pickCountry': 'Pick a country',
+    'workerSetupTip': 'Connect the panel to Cloudflare to create a brand-new Worker with its own dedicated subdomain and KV. The panel acts as a remote control, pushing configs to the Worker.', 'cfToken': 'Cloudflare API Token', 'getToken': 'Get Token', 'cfAccountId': 'Account ID', 'cfWorkerName': 'Worker Name', 'cfWorkerDomain': 'Worker Domain', 'createNewWorker': 'Create New Worker', 'cfConnect': 'Connect & Deploy', 'connected': 'Connected', 'disconnected': 'Disconnected', 'workerStatus': 'Status', 'remoteStatus': 'Remote Status', 'lastHeartbeat': 'Last Heartbeat', 'workerId': 'Worker ID', 'kvId': 'KV ID', 'onlineUsers': 'Online Users', 'workerTraffic': 'Worker Traffic', 'workerUrl': 'Worker URL', 'lastSync': 'Last Sync', 'lastError': 'Last Error', 'proxyPool': 'Proxy IP Pool', 'addProxy': 'Add Country', 'workerSettings': 'Worker Settings', 'removeConn': 'Remove Worker Connection', 'noProxyYet': 'No country added yet', 'connecting': 'Creating...', 'workerConnected': 'New worker created & deployed', 'syncing': 'Syncing...', 'synced': 'Synced', 'confirmRemoveWorker': 'Remove the Worker connection?', 'workerRemoved': 'Worker connection removed', 'proxyCodePrompt': 'Country code (e.g. de):', 'proxyCountryPrompt': 'Country name:', 'proxyHostPrompt': 'Proxy IP host (e.g. de.example.com):', 'proxyPortPrompt': 'Proxy IP port:', 'proxySaved': 'Country saved, worker updated', 'confirmDelProxy': 'Delete this country?', 'proxyDeleted': 'Country deleted', 'workerFillAll': 'Fill in all fields', 'workerProxyEnabled': 'Worker Proxy IP', 'workerProxyNone': 'No Proxy', 'workerRouteTip': 'The user config is built on the Worker domain with a /route/{code} path — traffic never crosses Railway.', 'workerAutoName': 'A new worker is created with a random name (panahannet-xxxxxx), its own subdomain and its own dedicated KV — no name entry needed.', 'proxySource': 'Daily Proxy Source', 'autoSyncHourly': 'Auto-update (hourly)', 'updateNow': 'Update Now', 'updatingFromSource': 'Updating from source', 'sourceUpdated': 'Updated', 'sourceError': 'Failed to update source', 'countries': 'countries', 'syncsDone': 'Syncs done', 'pickCountry': 'Pick a country',
     'tab.dash': 'Dashboard', 'tab.users': 'Manage Users', 'tab.inbounds': 'Manage Inbounds', 'tab.scanner': 'IP Scanner', 'tab.settings': 'Settings',
     'inboundFixedHint': 'Only the panel’s default inbounds are used. WS/TLS is ready automatically with the panel’s main domain; fill Reality’s domain & ports yourself (pbk is auto-generated).', 'inboundFixed': 'Adding inbounds is disabled — only the default inbounds.', 'inboundAuto': 'This inbound is automatic — nothing to configure.',
     'newUser': 'New User', 'newInbound': 'New Inbound', 'domain': 'Domain',
@@ -1909,7 +1936,7 @@ var I18N = {
     'toast.userCreated': 'User created', 'toast.userUpdated': 'User updated', 'toast.userDeleted': 'User deleted', 'toast.userToggled': 'User status changed', 'toast.inboundSaved': 'Inbound saved', 'toast.domainSaved': 'Domain saved', 'toast.passChanged': 'Password changed', 'toast.err': 'Error',
     'backupDownloaded': 'Backup downloaded', 'restoreDone': 'Restore completed', 'restoreFailed': 'Restore failed', 'restoreUploading': 'Uploading and restoring...', 'restoreUploadFailed': 'Upload failed',
     'panelUpdate': 'Panel Update', 'updatePanel': 'Update', 'confirmUpdate': 'Update the panel from GitHub?', 'updateStarted': 'Update started...', 'updateDone': 'Update finished — restart the panel to apply', 'updateFailed': 'Update failed', 'updateRunning': 'Updating...',
-    'panelUpdateHint': 'Clicking this pulls the latest repo from GitHub and installs it on the server (amirh00sain/SpiderPanel). When finished, restart/redeploy the panel on Railway to apply the new version.',
+    'panelUpdateHint': 'Clicking this pulls the latest repo from GitHub and installs it on the server (PANAHANNET). When finished, restart/redeploy the panel on Railway to apply the new version.',
     'backupRestore': 'Backup & Restore', 'backup': 'Backup (Download)', 'restore': 'Restore (Upload)', 'backupRestoreHint': 'Full backup includes: users, links, inbounds, scans, settings, password, groups, and Worker config. JSON file is downloaded/uploaded.',
     'autoconfig': 'Auto Config', 'tunnel': 'Tunnel',
     'acAutoBtn': 'Auto', 'acHint': 'Full automatic scan: ping domains → pick Railway/Cloudflare → IP scan → TCP domain test → SNI scan → final panel ping. All steps run from your own internet.',
@@ -1946,7 +1973,7 @@ function applyLang() {
 }
 function toggleLang() {
   LANG = LANG === 'fa' ? 'en' : 'fa';
-  localStorage.setItem('spider-lang', LANG);
+  localStorage.setItem('pn-lang', LANG);
   applyLang();
   toast(t(LANG === 'en' ? 'dash' : 'dash'), 'ok');
 }
@@ -2052,7 +2079,7 @@ function loadTheme() {
 function setTheme(t) {
   selectedTheme = (t === 'light') ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', selectedTheme);
-  localStorage.setItem('spider-theme', selectedTheme);
+  localStorage.setItem('pn-theme', selectedTheme);
   applyThemeUI();
 }
 function toggleThemeMode() {
@@ -2134,7 +2161,7 @@ function initLoginShader() {
 
 async function doLogout() {
   try { await api('/api/logout', {method: 'POST'}); } catch(e) {}
-  localStorage.removeItem('spider_session');
+  localStorage.removeItem('pn_session');
   // Go to the real panel login page (login.html) instead of the inline form.
   window.location.href = '/login';
 }
@@ -2187,6 +2214,7 @@ function switchTab(tab, el) {
   if (tab === 'scanner') scnInit();
   if (tab === 'worker') loadWorker();
   if (tab === 'tunnel') loadTunnel();
+  if (tab === 'settings') loadSettings();
   closeSidebar();
 }
 
@@ -2398,7 +2426,7 @@ async function submitCreateUser(e) {
   // Get spoof settings from localStorage
   var fakeSni = '', spoofIp = '';
   try {
-    var saved = localStorage.getItem('spider-spoof-settings');
+    var saved = localStorage.getItem('pn-spoof-settings');
     if (saved) { var s = JSON.parse(saved); fakeSni = s.fakeSni || ''; spoofIp = s.spoofIp || ''; }
   } catch(e) {}
   // Aggregate selected countries across ALL worker inbounds so every country
@@ -2530,7 +2558,7 @@ async function submitEditUser(e) {
   // set only at creation time in the add-users modal).
   var fakeSni = '', spoofIp = '';
   try {
-    var saved = localStorage.getItem('spider-spoof-settings');
+    var saved = localStorage.getItem('pn-spoof-settings');
     if (saved) { var s = JSON.parse(saved); fakeSni = s.fakeSni || ''; spoofIp = s.spoofIp || ''; }
   } catch(e) {}
   // Collect all selected worker countries from EU_COUNTRIES
@@ -2984,7 +3012,93 @@ async function deleteInbound(iid) {
 
 // ─── Settings ───
 function loadSettings() {
-  // Already handled by theme pickers in HTML
+  loadBrandBotSettings();
+}
+
+// ─── PANAHANNET brand + Telegram bot settings ───
+async function loadBrandBotSettings() {
+  try {
+    var s = await api('/api/settings');
+    var b = s.brand || {};
+    var set = function(id, v){ var el = $id(id); if (el) el.value = v || ''; };
+    set('brand-panel-name', b.panel_name);
+    set('brand-footer', b.footer_text);
+    set('brand-prefix', b.name_prefix);
+    set('brand-support', b.support_url);
+    set('brand-panel-path', s.panel_path);
+    var st = await api('/api/telegram/bot');
+    set('bot-token', '');
+    set('bot-admins', (st.admin_ids || []).join(','));
+    var shop = st.shop || {};
+    set('bot-card', shop.card_number);
+    set('bot-holder', shop.card_holder);
+    var el = $id('bot-status');
+    if (el) el.innerHTML = st.has_token ? ('وضعیت ربات: ' + (st.bot_username ? '@' + st.bot_username : 'متصل') + ' · سفارش‌های در انتظار: ' + (st.orders_pending || 0)) : 'توکن ربات ثبت نشده است.';
+    loadBotOrders();
+  } catch (e) {}
+}
+
+async function saveBrandSettings() {
+  try {
+    await api('/api/settings', {method: 'POST', body: {
+      brand: {
+        panel_name: $id('brand-panel-name').value,
+        footer_text: $id('brand-footer').value,
+        name_prefix: $id('brand-prefix').value,
+        support_url: $id('brand-support').value
+      },
+      panel_path: $id('brand-panel-path').value
+    }});
+    toast('تنظیمات برند ذخیره شد', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function saveBotSettings() {
+  var body = {
+    admin_ids: $id('bot-admins').value,
+    card_number: $id('bot-card').value,
+    card_holder: $id('bot-holder').value
+  };
+  var tok = $id('bot-token').value.trim();
+  if (tok) body.bot_token = tok;
+  try {
+    var r = await api('/api/telegram/bot', {method: 'POST', body: body});
+    toast('تنظیمات ربات ذخیره شد', 'ok');
+    loadBrandBotSettings();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function testBot() {
+  try {
+    var r = await api('/api/telegram/bot/test', {method: 'POST'});
+    toast(r.ok ? ('ربات متصل: @' + ((r.result || {}).username || '')) : ('خطا: ' + (r.error || '')), r.ok ? 'ok' : 'err');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadBotOrders() {
+  var box = $id('bot-orders');
+  if (!box) return;
+  try {
+    var r = await api('/api/telegram/bot/orders');
+    var orders = (r.orders || []).slice(0, 8);
+    if (!orders.length) { box.innerHTML = ''; return; }
+    box.innerHTML = orders.map(function(o){
+      var pkg = o.package || {};
+      var st = o.status || '';
+      var actions = st.indexOf('pending') === 0 ? ('<button class="btn btn-sm btn-p" onclick="botOrder(\'' + o.id + '\',\'approve\')">تأیید</button> <button class="btn btn-sm btn-r" onclick="botOrder(\'' + o.id + '\',\'reject\')">رد</button>') : '';
+      return '<div class="set-row" style="flex-direction:column;align-items:stretch;gap:4px;border-bottom:1px solid var(--border);padding:8px 0">' +
+        '<span style="font-size:12px">#' + o.id + ' · ' + (pkg.title || '') + ' · ' + (pkg.price||0).toLocaleString() + ' تومان</span>' +
+        '<span style="font-size:11px;color:var(--txt2)">کاربر: ' + o.tg_id + ' · ' + st + '</span>' + actions + '</div>';
+    }).join('');
+  } catch (e) {}
+}
+
+async function botOrder(id, act) {
+  try {
+    await api('/api/telegram/bot/orders/' + id + '/' + act, {method: 'POST'});
+    toast(act === 'approve' ? 'سفارش تأیید شد' : 'سفارش رد شد', 'ok');
+    loadBotOrders();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function changePassword(e) {
@@ -3045,7 +3159,7 @@ async function downloadBackup() {
     var a = document.createElement('a');
     a.href = url;
     var now = new Date();
-    a.download = 'spider-panel-backup-' + now.toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json';
+    a.download = 'panahannet-panel-backup-' + now.toISOString().slice(0,19).replace(/[:T]/g,'-') + '.json';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -3152,7 +3266,7 @@ function updateNeonBars(){
 }
 
 // --- Panel Audio (auto-play from static folder) ---
-function togglePanelAudio(){var p=$id('panel-audio-player');var sw=$id('audio-autoplay');sw.classList.toggle('on');var on=sw.classList.contains('on');if(on){p.play().catch(function(){})}else{p.pause()};localStorage.setItem('spider_audio', on?'1':'0')}
+function togglePanelAudio(){var p=$id('panel-audio-player');var sw=$id('audio-autoplay');sw.classList.toggle('on');var on=sw.classList.contains('on');if(on){p.play().catch(function(){})}else{p.pause()};localStorage.setItem('pn_audio', on?'1':'0')}
 // Panel music: browsers block autoplay, so we wait for the first user click/tap
 // (autoplay policy) and only then start playing if the switch is ON.
 (function initPanelAudio(){
@@ -3160,7 +3274,7 @@ function togglePanelAudio(){var p=$id('panel-audio-player');var sw=$id('audio-au
   if (!p) return;
   p.src='/static/music-panel.mp3'; p.volume=0.3; p.load();
   var sw=$id('audio-autoplay');
-  var saved=localStorage.getItem('spider_audio');
+  var saved=localStorage.getItem('pn_audio');
   sw.classList.toggle('on', saved!=='0');
   var started=false;
   function start(){
@@ -4249,12 +4363,12 @@ function spfEditAdvDomain(i) {
 }
 
 function spfSaveAdvDomains() {
-  localStorage.setItem('spider-adv-domains', JSON.stringify(scnAdvDomains));
+  localStorage.setItem('pn-adv-domains', JSON.stringify(scnAdvDomains));
 }
 
 function spfLoadAdvDomains() {
   try {
-    var saved = localStorage.getItem('spider-adv-domains');
+    var saved = localStorage.getItem('pn-adv-domains');
     if (saved) scnAdvDomains = JSON.parse(saved);
   } catch (e) {}
 }
@@ -4303,13 +4417,13 @@ function spfSaveSpoofSettings() {
     return;
   }
   var settings = {fakeSni: fakeSni, spoofIp: spoofIp};
-  localStorage.setItem('spider-spoof-settings', JSON.stringify(settings));
+  localStorage.setItem('pn-spoof-settings', JSON.stringify(settings));
   toast('تنظیمات Spoof ذخیره شد', 'ok');
 }
 
 function spfLoadSpoofSettings() {
   try {
-    var saved = localStorage.getItem('spider-spoof-settings');
+    var saved = localStorage.getItem('pn-spoof-settings');
     if (saved) {
       var s = JSON.parse(saved);
       $id('spf-fake-sni').value = s.fakeSni || '';

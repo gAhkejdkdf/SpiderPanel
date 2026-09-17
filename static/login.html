@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Spider Panel Login</title>
+<title>PANAHANNET Panel Login</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet"/>
@@ -167,7 +167,7 @@
         }
 </style>
 <script>
-  document.documentElement.setAttribute('data-theme', localStorage.getItem('spider-theme') === 'light' ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', localStorage.getItem('pn-theme') === 'light' ? 'light' : 'dark');
 </script>
 </head>
 <body class="bg-background text-on-surface h-screen w-screen overflow-hidden flex items-center justify-center relative">
@@ -226,11 +226,11 @@
 <div class="glass-card rounded-3xl w-full max-w-md p-stack-lg mx-margin-mobile flex flex-col gap-stack-lg shadow-2xl shadow-black/50 z-10" data-login-theme>
   <!-- Header -->
   <div class="flex flex-col items-center gap-stack-sm text-center">
-    <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-2">
-      <span class="material-symbols-outlined text-black" style="font-size: 28px;">cloud</span>
+    <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-2" style="background:linear-gradient(135deg,#2563eb,#7c3aed);">
+      <img src="/static/panahannet-logo.svg" alt="PANAHANNET" style="width:34px;height:34px;border-radius:9px;" onerror="this.style.display='none'">
     </div>
-    <h1 class="font-headline-lg text-headline-lg text-on-surface">SPIDER PANEL</h1>
-    <p class="font-body-sm text-body-sm text-on-surface-variant">High Performance Panel</p>
+    <h1 class="font-headline-lg text-headline-lg text-on-surface" id="brand-name">PANAHANNET</h1>
+    <p class="font-body-sm text-body-sm text-on-surface-variant" id="brand-tagline">Secure Panel</p>
   </div>
 
   <!-- Error -->
@@ -256,6 +256,11 @@
 </div>
 
 <script>
+try {
+  var _b = window.__BRAND__ || {};
+  if (_b.panel_name) { document.getElementById('brand-name').textContent = _b.panel_name; document.title = _b.panel_name + ' Login'; }
+  if (_b.footer_text) { var _t = document.getElementById('brand-tagline'); if (_t) _t.textContent = _b.footer_text; }
+} catch (e) {}
 document.getElementById('login-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   var btn = document.getElementById('loginBtn');
@@ -279,7 +284,7 @@ document.getElementById('login-form').addEventListener('submit', async function(
       var d = await r.json().catch(function() { return {}; });
       throw new Error(d.detail || 'Login failed');
     }
-    location.href = '/spider';
+    location.href = (window.__PANEL_PATH__ || '/panel');
   } catch(ex) {
     errText.textContent = ex.message;
     errDiv.classList.add('show');
